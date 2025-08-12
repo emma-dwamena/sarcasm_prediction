@@ -1,0 +1,16 @@
+# Sarcasm Detection (ELMo + Streamlit + scikit-learn)
+# Tested with Python 3.10–3.11. Adjust TF if using other versions/GPUs.
+
+streamlit>=1.32
+pandas>=1.5
+numpy>=1.23,<2.0
+scikit-learn>=1.2
+matplotlib>=3.6
+
+# TensorFlow + TF-Hub for ELMo
+tensorflow==2.12.1          # CPU build; for NVIDIA GPUs <= CUDA 11.8 consider tensorflow==2.12.1 + proper CUDA/cuDNN
+tensorflow-hub>=0.13.0,<0.16
+protobuf>=3.20,<5.0         # compatible with TF 2.12
+
+# Optional (remove if not needed)
+# tqdm>=4.65
