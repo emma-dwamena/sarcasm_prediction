@@ -384,7 +384,7 @@ def page_preprocess():
 
     st.subheader("Train/Test Split")
     c1, c2 = st.columns(2)
-    with c1: st.session_state.test_size = st.slider("Test size fraction", 0.1, 0.4, float(st.session_state.test_size), 0.05)
+    with c1: st.session_state.test_size = st.slider("Test size", 0.1, 0.4, float(st.session_state.test_size), 0.05)
     with c2: st.session_state.random_state = st.number_input("Random state", 0, 10000, int(st.session_state.random_state), step=1)
 
     counts = df["__label__"].value_counts(); min_count = int(counts.min()) if len(counts)>0 else 0
@@ -396,7 +396,7 @@ def page_preprocess():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=st.session_state.test_size,
                                                         random_state=st.session_state.random_state, stratify=stratify_arg)
 
-    st.subheader("Imbalance Handling — Downsampling Ratio")
+    st.subheader("Handling Imbalance — Downsampling")
     st.caption("Reduce the majority class **in the training set** to reach a majority:minority ratio ≥ 1.0 (e.g., 1.0→50/50, 1.5→1.5×).")
     st.session_state.down_maj_mult = st.slider("Target majority:minority ratio", 1.0, 3.0, float(st.session_state.down_maj_mult), 0.1)
 
