@@ -274,7 +274,7 @@ st.sidebar.caption("ELMo → Logistic Regression / Random Forest • Precision /
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     """
-    <div style='font-size:14px; line-height:1.4;'>
+    <div style='font-size:10px; line-height:1.2;'>
     Erwin K. Opare-Essel - 22254064<br>
     Emmanuel Oduro Dwamena - 11410636<br>
     Elizabeth Afranewaa Abayateye - 22252474<br>
