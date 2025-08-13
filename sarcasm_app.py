@@ -52,21 +52,21 @@ st.markdown(
     """
     <style>
     :root{
-      --bg:#0b0f19; --panel:#121826; --border:#1f2937; --text:#e5e7eb;
-      --muted:#9ca3af; --accent:#60a5fa; --good:#10b981; --warn:#f59e0b; --bad:#ef4444;
+      --bg:#ffffff; --panel:#f9fafb; --border:#d1d5db; --text:#111827;
+      --muted:#6b7280; --accent:#2563eb; --good:#16a34a; --warn:#d97706; --bad:#dc2626;
     }
 
     /* App background & sidebar */
     html, body, [data-testid="stAppViewContainer"]{ background:var(--bg); color:var(--text); }
-    section[data-testid="stSidebar"]{ background:linear-gradient(180deg,#0b0f19 0%, #0f172a 100%); }
-    section[data-testid="stSidebar"] *{ color:#e5e7eb !important; }
+    section[data-testid="stSidebar"]{ background:linear-gradient(180deg,#f3f4f6 0%, #e5e7eb 100%); }
+    section[data-testid="stSidebar"] *{ color:#111827 !important; }
 
     a { color: var(--accent) !important; }
 
     /* Cards / panels */
     .card{
       background:var(--panel); border:1px solid var(--border);
-      border-radius:16px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,.15);
+      border-radius:16px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,.05);
     }
 
     /* Buttons */
@@ -74,7 +74,7 @@ st.markdown(
       background:var(--panel); color:var(--text); border:1px solid var(--border);
       border-radius:10px; padding:.6rem 1rem;
     }
-    .stButton>button:hover, .stDownloadButton>button:hover{ border-color:#334155; }
+    .stButton>button:hover, .stDownloadButton>button:hover{ border-color:#9ca3af; }
 
     /* Inputs (text/number/textarea) */
     .stTextInput input, .stTextArea textarea, .stNumberInput input{
