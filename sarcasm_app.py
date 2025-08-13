@@ -492,8 +492,7 @@ st.session_state.prep_cache  = {
         "X_rf_train": X_rf_train, "y_rf_train": y_rf_train,
         "X_test_std": X_test_std
     }
-
-    st.success("Preprocessing complete. Proceed to **3) Model Training**.")
+st.success("Preprocessing complete. Proceed to **3) Model Training**.")
 
 # ==============================
 # Page 3 — Model Training
