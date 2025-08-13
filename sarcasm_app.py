@@ -290,7 +290,7 @@ st.sidebar.markdown(
 # Page 1 — Data Upload
 # ==============================
 def page_upload():
-    st.title("1) Data Upload")
+    st.title(Data Upload")
     f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
     if f is not None:
         name = f.name.lower()
