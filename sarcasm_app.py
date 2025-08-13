@@ -9,7 +9,7 @@ This prevents NameError like "X_lr_train is not defined".
 Pages:
 1) Data Upload
 2) Data Preprocessing (tunable downsampling ratio + charts)
- Model Training
+3) Model Training
 4) Model Evaluation
 5) Prediction
 """
@@ -51,83 +51,23 @@ st.set_page_config(page_title="Sarcasm Detection (ELMo + LR/RF)", page_icon="�
 st.markdown(
     """
     <style>
-    :root{
-      --bg:#ffffff; --panel:#f9fafb; --border:#d1d5db; --text:#111827;
-      --muted:#6b7280; --accent:#2563eb; --good:#16a34a; --warn:#d97706; --bad:#dc2626;
-    }
-
-    /* App background & sidebar */
+    :root{ --bg:#0b0f19; --panel:#121826; --border:#1f2937; --text:#e5e7eb; --muted:#9ca3af; --accent:#60a5fa; }
     html, body, [data-testid="stAppViewContainer"]{ background:var(--bg); color:var(--text); }
-    section[data-testid="stSidebar"]{ background:linear-gradient(180deg,#f3f4f6 0%, #e5e7eb 100%); }
-    section[data-testid="stSidebar"] *{ color:#111827 !important; }
-
+    section[data-testid="stSidebar"]{ background:linear-gradient(180deg,#0b0f19 0%, #0f172a 100%); }
+    section[data-testid="stSidebar"] *{ color:#e5e7eb !important; }
     a { color: var(--accent) !important; }
-
-    /* Cards / panels */
-    .card{
-      background:var(--panel); border:1px solid var(--border);
-      border-radius:16px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,.05);
-    }
-
-    /* Buttons */
+    .card{ background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:16px; }
     .stButton>button, .stDownloadButton>button{
-      background:var(--panel); color:var(--text); border:1px solid var(--border);
-      border-radius:10px; padding:.6rem 1rem;
+      background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.6rem 1rem;
     }
-    .stButton>button:hover, .stDownloadButton>button:hover{ border-color:#9ca3af; }
-
-    /* Inputs (text/number/textarea) */
     .stTextInput input, .stTextArea textarea, .stNumberInput input{
       background: var(--panel) !important; color: var(--text) !important; border:1px solid var(--border) !important;
     }
-
-    /* Selectbox / Multiselect */
-    div[data-baseweb="select"] > div{
-      background: var(--panel) !important; color: var(--text) !important; border:1px solid var(--border) !important;
-    }
-    div[data-baseweb="select"] svg{ color: var(--muted) !important; }
-
-    /* File Uploader */
-    section[data-testid="stFileUploaderDropzone"]{
-      background: var(--panel) !important; border:1px dashed var(--border) !important; border-radius:12px !important;
-    }
-
-    /* Dataframe */
-    div[data-testid="stDataFrame"]{
-      background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:8px;
-    }
-
-    /* Metrics */
-    div[data-testid="stMetricValue"]{ color:var(--text) !important; }
-    div[data-testid="stMetricLabel"]{ color:var(--muted) !important; }
-
-    /* Tabs: sticky with accent underline on active */
-    div[data-testid="stTabs"] > div[role="tablist"]{
-      position:sticky; top:0; z-index:10; background:var(--panel); border-bottom:1px solid var(--border);
-    }
-    div[role="tab"]{
-      color: var(--muted) !important; border-bottom: 2px solid transparent !important; padding-bottom:.4rem !important;
-    }
-    div[role="tab"][aria-selected="true"]{
-      color: var(--text) !important; border-bottom: 2px solid var(--accent) !important;
-    }
-
-    /* Expanders */
-    details[data-testid="stExpander"]{
-      background: var(--panel); border:1px solid var(--border); border-radius:12px;
-    }
-
-    /* Code blocks & tables in markdown */
-    pre, code, .stMarkdown table{
-      background: var(--panel) !important; color: var(--text) !important;
-      border:1px solid var(--border) !important; border-radius:8px;
-    }
-    .stMarkdown table th, .stMarkdown table td{ border-color: var(--border) !important; }
+    div[data-testid="stDataFrame"]{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:8px; }
     </style>
     """,
     unsafe_allow_html=True
 )
-
 
 # ==============================
 # Session-State Initialization
@@ -261,36 +201,22 @@ def st_plot_dist(y_before, y_after, title):
 # ==============================
 # Sidebar Navigation
 # ==============================
-st.sidebar.title("📰 Sarcasm Detector")
+st.sidebar.title("📰 Sarcasm Detector (ELMo + Downsampling)")
 page = st.sidebar.radio("Navigate", [
-    "Data Upload",
-    "Data Preprocessing",
-    "Model Training",
-    "Model Evaluation",
-    "Prediction",
+    "1) Data Upload",
+    "2) Data Preprocessing",
+    "3) Model Training",
+    "4) Model Evaluation",
+    "5) Prediction",
 ])
 st.sidebar.markdown("---")
 st.sidebar.caption("ELMo → Logistic Regression / Random Forest • Precision / Recall / F1 / ROC-AUC")
-st.sidebar.markdown("---")
-st.sidebar.markdown(
-    """
-    <div style='font-size:12px; line-height:1.3;'>
-    Erwin K. Opare-Essel - 22254064<br>
-    Emmanuel Oduro Dwamena - 11410636<br>
-    Elizabeth Afranewaa Abayateye - 22252474<br>
-    Elien Samira Osumanu - 11410414<br>
-    Innocent Arkaah - 11410788<br>
-    Sheena Pognaa Dasoberi - 22252392
-    </div>
-    """,
-    unsafe_allow_html=True
-)
 
 # ==============================
 # Page 1 — Data Upload
 # ==============================
 def page_upload():
-    st.title(" Data Upload")
+    st.title("1) Data Upload")
     st.markdown("Upload the Kaggle **Sarcasm** dataset (CSV/JSON/JSONL).")
     f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
     if f is not None:
@@ -327,7 +253,7 @@ def page_upload():
 # Page 2 — Data Preprocessing
 # ==============================
 def page_preprocess():
-    st.title("Data Preprocessing — Tunable Downsampling + Charts")
+    st.title("2) Data Preprocessing — Tunable Downsampling + Charts")
     if st.session_state.df is None:
         st.warning("Please upload a dataset in **1) Data Upload**."); return
     df = st.session_state.df.copy()
@@ -336,7 +262,7 @@ def page_preprocess():
         st.warning("Select text and label columns in **1) Data Upload**."); return
 
     st.subheader("Text Cleaning")
-    c1, c2, c3 = st.columns(
+    c1, c2, c3 = st.columns(3)
     with c1: st.session_state.clean_lower = st.checkbox("lowercase", value=st.session_state.clean_lower)
     with c2: st.session_state.clean_punct = st.checkbox("remove punctuation", value=st.session_state.clean_punct)
     with c3: st.session_state.dedupe = st.checkbox("drop duplicate texts", value=st.session_state.dedupe)
@@ -425,13 +351,13 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
         "X_rf_train": X_rf_train, "y_rf_train": y_rf_train,
         "X_test_std": X_test_std
     }
-    st.success("Preprocessing complete. Proceed to **Model Training**.")
+    st.success("Preprocessing complete. Proceed to **3) Model Training**.")
 
 # ==============================
 # Page 3 — Model Training
 # ==============================
 def page_train():
-    st.title(" Model Training")
+    st.title("3) Model Training")
     required = ["X_train_emb", "X_test_emb", "y_train", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in required):
         st.warning("Please finish **2) Data Preprocessing** first."); return
@@ -440,7 +366,7 @@ def page_train():
     X_rf_train = cache["X_rf_train"]; y_rf_train = cache["y_rf_train"]
 
     st.subheader("Hyperparameters")
-    c1, c2, c3 = st.columns(
+    c1, c2, c3 = st.columns(3)
     with c1: C = st.number_input("Logistic Regression C", 0.01, 100.0, 1.0, step=0.05)
     with c2: n_estimators = st.number_input("RandomForest n_estimators", 50, 1000, 300, step=50)
     with c3:
@@ -459,7 +385,7 @@ def page_train():
             rf.fit(X_rf_train, y_rf_train)
 
     st.session_state.models = {"lr": lr, "rf": rf}
-    st.success("Training complete. Proceed to **Model Evaluation**.")
+    st.success("Training complete. Proceed to **4) Model Evaluation**.")
 
 # ==============================
 # Page 4 — Model Evaluation
@@ -469,10 +395,10 @@ def _safe_auc(y_true, scores):
     except Exception: return float("nan")
 
 def page_evaluation():
-    st.title("Model Evaluation")
+    st.title("4) Model Evaluation")
     req = ["models", "X_test_emb", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
-        st.warning("Train models in ** Model Training** first."); return
+        st.warning("Train models in **3) Model Training** first."); return
 
     models = st.session_state.models
     scaler = st.session_state.scaler
@@ -532,7 +458,7 @@ def page_evaluation():
 # Page 5 — Prediction
 # ==============================
 def page_prediction():
-    st.title("Prediction")
+    st.title("5) Prediction")
     req = ["models", "scaler", "elmo"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
         st.warning("Please complete **Training** before predicting."); return
