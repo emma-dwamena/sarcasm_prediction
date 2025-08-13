@@ -21,6 +21,29 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+# === UI helper: ELMo embedding with visible progress (no ML changes) ===
+def _embed_with_progress(texts, elmo_module, batch_size=32, label="texts"):
+    total = len(texts)
+    if total == 0:
+        return np.zeros((0, 1024), dtype=np.float32)
+    prog = st.progress(0.0, text=f"Embedding {label} with ELMo… 0/{total}")
+    out = []
+    done = 0
+    for i in range(0, total, batch_size):
+        chunk = texts[i:i+batch_size]
+        # Use the existing elmo .embed call to preserve behavior
+        emb = elmo_module.embed(chunk, batch_size=len(chunk))
+        out.append(emb)
+        done = min(i + batch_size, total)
+        prog.progress(done/total, text=f"Embedding {label} with ELMo… {done}/{total}")
+    prog.empty()
+    try:
+        return np.vstack(out)
+    except Exception:
+        # If the embed already returns a single array (not per-batch), just return the last result
+        return out[-1] if out else np.zeros((0, 1024), dtype=np.float32)
+# === End helper ===
+
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
@@ -394,10 +417,8 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
         st.success("ELMo loaded.")
 
     bsz = 32
-    with st.spinner("Embedding training texts with ELMo…"):
-        X_train_emb = st.session_state.elmo.embed(X_train, batch_size=bsz)
-    with st.spinner("Embedding test texts with ELMo…"):
-        X_test_emb = st.session_state.elmo.embed(X_test, batch_size=bsz)
+    X_train_emb = _embed_with_progress(X_train, st.session_state.elmo, batch_size=bsz, label="training texts")
+    X_test_emb = _embed_with_progress(X_test, st.session_state.elmo, batch_size=bsz, label="test texts")
 
     scaler = StandardScaler()
     X_train_std = scaler.fit_transform(X_train_emb)
