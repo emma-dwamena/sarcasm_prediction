@@ -453,7 +453,7 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
 
     # -- Downsampling on the training set (both LR & RF views) using chosen ratio
     maj_mult = float(st.session_state.down_maj_mult)
-    \1
+    
     # -- Visualize distribution before vs after downsampling
     st.subheader("Downsampling distribution charts")
     st.caption("Before vs after downsampling (training set).")
