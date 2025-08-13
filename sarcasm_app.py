@@ -291,7 +291,6 @@ st.sidebar.markdown(
 # ==============================
 def page_upload():
     st.title("1) Data Upload")
-    st.markdown("Upload the Kaggle **Sarcasm** dataset (CSV/JSON/JSONL).")
     f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
     if f is not None:
         name = f.name.lower()
