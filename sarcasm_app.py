@@ -1,17 +1,17 @@
 
 # -*- coding: utf-8 -*-
 
-Sarcasm Detection App (ELMo + Logistic Regression / Random Forest)
-Imbalance handling: **Downsampling** (majority class), with adjustable majority:minority ratio.
-Pages: Upload → Preprocess → Train → Evaluate → Predict (single + batch).
-UI: Professional dark theme.
+#Sarcasm Detection App (ELMo + Logistic Regression / Random Forest)
+#Imbalance handling: **Downsampling** (majority class), with adjustable majority:minority ratio.
+#Pages: Upload → Preprocess → Train → Evaluate → Predict (single + batch).
+#UI: Professional dark theme.
 
-Install (typical):
-pip install streamlit scikit-learn matplotlib pandas numpy tensorflow==2.15.0 tensorflow-hub==0.15.0
+#Install (typical):
+#pip install streamlit scikit-learn matplotlib pandas numpy tensorflow==2.15.0 tensorflow-hub==0.15.0
 # (ELMo is a TF1 module; TF 2.15 + tf.compat.v1 is used.)
 
-Run:
-streamlit run sarcasm_downsample_app.py
+#Run:
+#streamlit run sarcasm_downsample_app.py
 
 import os
 import io
