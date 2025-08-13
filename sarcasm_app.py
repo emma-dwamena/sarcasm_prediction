@@ -261,7 +261,7 @@ def st_plot_dist(y_before, y_after, title):
 # ==============================
 # Sidebar Navigation
 # ==============================
-st.sidebar.title("📰 Sarcasm Detector (ELMo + Downsampling)")
+st.sidebar.title("📰 Sarcasm Detector")
 page = st.sidebar.radio("Navigate", [
     "1) Data Upload",
     "2) Data Preprocessing",
