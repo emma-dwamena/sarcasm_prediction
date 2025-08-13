@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Sarcasm Detection App — ELMo Embeddings + Downsampling + Logistic Regression / Random Forest
--------------------------------------------------------------------------------------------
-This Streamlit application demonstrates an end‑to‑end text classification pipeline on the
-Kaggle "News Headlines with Sarcasm" dataset. It provides five pages:
+Sarcasm Detection App — ELMo Embeddings + Tunable Downsampling + Logistic Regression / Random Forest
+---------------------------------------------------------------------------------------------------
+This Streamlit application demonstrates an end-to-end text classification pipeline on the
+Kaggle "News Headlines with Sarcasm" dataset, with a **tunable downsampling ratio** for
+class imbalance handling.
 
+Pages:
 1) Data Upload        — Load CSV/JSON/JSONL and map text/label columns.
-2) Data Preprocessing — Clean text, split the data, **balance with downsampling (1:1)**,
-                        compute ELMo embeddings, and standardize features for LR.
-3) Model Training     — Train Logistic Regression and Random Forest on the downsampled train set.
-4) Model Evaluation   — Compare precision, recall, F1, and ROC‑AUC; show confusion matrices & ROC curves.
+2) Data Preprocessing — Clean text, split the data, **downsample majority class** to a user-chosen
+                        majority:minority ratio (≥ 1.0), compute ELMo embeddings, and standardize features.
+3) Model Training     — Train Logistic Regression (std. embeddings) and Random Forest (raw embeddings).
+4) Model Evaluation   — Compare Precision, Recall, F1, and ROC-AUC; show confusion matrices & ROC curves.
 5) Prediction         — Predict on a single text or a batch CSV and download results.
 
 Notes on ELMo / TensorFlow Hub:
@@ -18,7 +20,7 @@ Notes on ELMo / TensorFlow Hub:
 
 Run:
     pip install streamlit scikit-learn matplotlib pandas numpy tensorflow==2.15.0 tensorflow-hub==0.12.0
-    streamlit run sarcasm_elmo_downsample_commented_app.py
+    streamlit run sarcasm_elmo_downsample_ratio_commented_app.py
 """
 
 # ==============================
@@ -103,6 +105,7 @@ def _init_state():
     ss.setdefault("dedupe", True)             # drop duplicate texts
     ss.setdefault("test_size", 0.2)           # fraction for test split
     ss.setdefault("random_state", 42)         # RNG seed for reproducibility
+    ss.setdefault("down_maj_mult", 1.0)       # target majority:minority ratio (>=1.0)
     ss.setdefault("elmo", None)               # ELMo embedder instance
     ss.setdefault("X_train_emb", None)        # train embeddings (raw ELMo)
     ss.setdefault("X_test_emb", None)         # test embeddings (raw ELMo)
@@ -184,12 +187,13 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
         return np.vstack(mats)
 
 # ==============================
-# Downsampling (Class Balance 1:1)
+# Tunable Downsampling (majority:minority >= 1.0)
 # ==============================
-def balanced_downsample(X, y, random_state=42):
+def downsample_ratio(X, y, maj_mult=1.0, random_state=42):
     """
-    Downsample the majority class to match the minority class count (1:1 balance).
-    Applied **only** to the training set.
+    Downsample the majority class to achieve a **majority:minority** ratio close to `maj_mult`.
+    - Only removes samples from the majority class (never from the minority).
+    - Example: maj_mult=1.0 → 1:1 balance (strict); 1.5 → majority ≈ 1.5× minority.
     """
     rng = np.random.RandomState(random_state)
     y = np.asarray(y).astype(int)
@@ -199,14 +203,26 @@ def balanced_downsample(X, y, random_state=42):
     if n0 == 0 or n1 == 0:
         # Can't balance if a class is missing
         return X, y
-    if n0 > n1:
-        keep_maj = rng.choice(idx0, size=n1, replace=False)
-        keep_idx = np.concatenate([idx1, keep_maj])
-    elif n1 > n0:
-        keep_maj = rng.choice(idx1, size=n0, replace=False)
-        keep_idx = np.concatenate([idx0, keep_maj])
+
+    # Identify majority vs minority
+    if n0 >= n1:
+        maj_idx, min_idx = idx0, idx1
+        nmaj, nmin = n0, n1
     else:
-        keep_idx = np.arange(len(y))
+        maj_idx, min_idx = idx1, idx0
+        nmaj, nmin = n1, n0
+
+    # Desired majority size (cannot exceed current majority size and cannot be < minority size)
+    target_maj = int(max(nmin, np.floor(nmin * float(maj_mult))))
+    target_maj = min(target_maj, nmaj)
+
+    # Randomly keep `target_maj` samples from the majority and keep all minority samples
+    if nmaj > target_maj:
+        keep_maj = rng.choice(maj_idx, size=target_maj, replace=False)
+    else:
+        keep_maj = maj_idx
+
+    keep_idx = np.concatenate([min_idx, keep_maj])
     rng.shuffle(keep_idx)
     return X[keep_idx], y[keep_idx]
 
@@ -278,9 +294,9 @@ def page_upload():
 def page_preprocess():
     """
     Clean text, split data, create ELMo embeddings, standardize inputs, and
-    perform **balanced downsampling (1:1)** on the training set.
+    perform **downsampling** on the training set according to a chosen ratio.
     """
-    st.title("2) Data Preprocessing — Balanced Downsampling (1:1)")
+    st.title("2) Data Preprocessing — Tunable Downsampling")
 
     if st.session_state.df is None:
         st.warning("Please upload a dataset in **1) Data Upload**.")
@@ -361,6 +377,12 @@ def page_preprocess():
         stratify=stratify_arg
     )
 
+    # -- Downsampling ratio control (majority:minority ≥ 1.0)
+    st.subheader("Imbalance Handling — Downsampling Ratio")
+    st.caption("Reduce the majority class **in the training set** to reach a majority:minority ratio ≥ 1.0. "
+               "Example: 1.0 → 50/50; 1.5 → majority ≈ 1.5× minority. Only the majority class is reduced.")
+    st.session_state.down_maj_mult = st.slider("Target majority:minority ratio", 1.0, 3.0, float(st.session_state.down_maj_mult), 0.1)
+
     # -- Load ELMo (first time only)
     st.subheader("ELMo Embeddings")
     if st.session_state.elmo is None:
@@ -392,9 +414,10 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
     X_train_std = scaler.fit_transform(X_train_emb)
     X_test_std  = scaler.transform(X_test_emb)
 
-    # -- Balanced downsampling on the training set (both LR & RF views)
-    X_lr_train, y_lr_train = balanced_downsample(X_train_std, y_train, random_state=st.session_state.random_state)
-    X_rf_train, y_rf_train = balanced_downsample(X_train_emb, y_train, random_state=st.session_state.random_state)
+    # -- Downsampling on the training set (both LR & RF views) using chosen ratio
+    maj_mult = float(st.session_state.down_maj_mult)
+    X_lr_train, y_lr_train = downsample_ratio(X_train_std, y_train, maj_mult=maj_mult, random_state=st.session_state.random_state)
+    X_rf_train, y_rf_train = downsample_ratio(X_train_emb, y_train, maj_mult=maj_mult, random_state=st.session_state.random_state)
 
     # -- Report pre/post downsampling counts to the user
     def _counts(yv):
@@ -405,7 +428,7 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
     n0_lr_after, n1_lr_after = _counts(y_lr_train)
     n0_rf_after, n1_rf_after = _counts(y_rf_train)
 
-    with st.expander("Train set class counts (before → after balanced downsampling)", expanded=True):
+    with st.expander("Train set class counts (before → after downsampling)", expanded=True):
         st.write(pd.DataFrame({
             "view": ["LR (scaled)", "RF (raw)"],
             "0_before": [n0_before, n0_before],
