@@ -574,7 +574,7 @@ def page_prediction():
 
     with tab_batch:
         st.write("Upload a CSV for batch predictions.")
-        bf = st.file_uploader("Upload CSV", type=["csv"], key="batch_csv")
+        bf = st.file_uploader("Upload CSV", type=["csv","txt"], key="batch_csv")
         text_col_name = st.text_input("Text column name in CSV", value=st.session_state.text_col or "headline")
         if bf is not None:
             try: bdf = pd.read_csv(bf)
