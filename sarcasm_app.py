@@ -453,8 +453,12 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
 
     # -- Downsampling on the training set (both LR & RF views) using chosen ratio
     maj_mult = float(st.session_state.down_maj_mult)
-    X_lr_train, y_lr_train = downsample_ratio(X_train_std, y_train, maj_mult=maj_mult, random_state=st.session_state.random_state)
-    X_rf_train, y_rf_train = downsample_ratio(X_train_emb, y_train, maj_mult=maj_mult, random_state=st.session_state.random_state)
+    \1
+    # -- Visualize distribution before vs after downsampling
+    st.subheader("Downsampling distribution charts")
+    st.caption("Before vs after downsampling (training set).")
+    st_plot_dist(y_before=y_train, y_after=y_lr_train, title="Class distribution (LR view)")
+    st_plot_dist(y_before=y_train, y_after=y_rf_train, title="Class distribution (RF view)")
 
     # -- Report pre/post downsampling counts to the user
     def _counts(yv):
@@ -480,19 +484,13 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
     st.session_state.y_train     = y_train
     st.session_state.y_test      = y_test
     st.session_state.scaler      = scaler
-    
-
-# -- Visualize distribution before vs after downsampling
-st.subheader("Downsampling distribution charts")
-st.caption("Before vs after downsampling (training set).")
-st_plot_dist(y_before=y_train, y_after=y_lr_train, title="Class distribution (LR view)")
-st_plot_dist(y_before=y_train, y_after=y_rf_train, title="Class distribution (RF view)")
 st.session_state.prep_cache  = {
         "X_lr_train": X_lr_train, "y_lr_train": y_lr_train,
         "X_rf_train": X_rf_train, "y_rf_train": y_rf_train,
         "X_test_std": X_test_std
     }
-st.success("Preprocessing complete. Proceed to **3) Model Training**.")
+
+    st.success("Preprocessing complete. Proceed to **3) Model Training**.")
 
 # ==============================
 # Page 3 — Model Training
