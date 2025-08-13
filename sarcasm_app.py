@@ -9,7 +9,7 @@ This prevents NameError like "X_lr_train is not defined".
 Pages:
 1) Data Upload
 2) Data Preprocessing (tunable downsampling ratio + charts)
-3) Model Training
+ Model Training
 4) Model Evaluation
 5) Prediction
 """
@@ -261,20 +261,20 @@ def st_plot_dist(y_before, y_after, title):
 # ==============================
 # Sidebar Navigation
 # ==============================
-st.sidebar.title("📰 Sarcasm Detector (ELMo + Downsampling)")
+st.sidebar.title("📰 Sarcasm Detector")
 page = st.sidebar.radio("Navigate", [
-    "1) Data Upload",
-    "2) Data Preprocessing",
-    "3) Model Training",
-    "4) Model Evaluation",
-    "5) Prediction",
+    "Data Upload",
+    "Data Preprocessing",
+    "Model Training",
+    "Model Evaluation",
+    "Prediction",
 ])
 st.sidebar.markdown("---")
 st.sidebar.caption("ELMo → Logistic Regression / Random Forest • Precision / Recall / F1 / ROC-AUC")
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     """
-    <div style='font-size:10px; line-height:1.2;'>
+    <div style='font-size:12px; line-height:1.3;'>
     Erwin K. Opare-Essel - 22254064<br>
     Emmanuel Oduro Dwamena - 11410636<br>
     Elizabeth Afranewaa Abayateye - 22252474<br>
@@ -290,7 +290,7 @@ st.sidebar.markdown(
 # Page 1 — Data Upload
 # ==============================
 def page_upload():
-    st.title("1) Data Upload")
+    st.title(" Data Upload")
     st.markdown("Upload the Kaggle **Sarcasm** dataset (CSV/JSON/JSONL).")
     f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
     if f is not None:
@@ -327,7 +327,7 @@ def page_upload():
 # Page 2 — Data Preprocessing
 # ==============================
 def page_preprocess():
-    st.title("2) Data Preprocessing — Tunable Downsampling + Charts")
+    st.title("Data Preprocessing — Tunable Downsampling + Charts")
     if st.session_state.df is None:
         st.warning("Please upload a dataset in **1) Data Upload**."); return
     df = st.session_state.df.copy()
@@ -336,7 +336,7 @@ def page_preprocess():
         st.warning("Select text and label columns in **1) Data Upload**."); return
 
     st.subheader("Text Cleaning")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3 = st.columns(
     with c1: st.session_state.clean_lower = st.checkbox("lowercase", value=st.session_state.clean_lower)
     with c2: st.session_state.clean_punct = st.checkbox("remove punctuation", value=st.session_state.clean_punct)
     with c3: st.session_state.dedupe = st.checkbox("drop duplicate texts", value=st.session_state.dedupe)
@@ -425,13 +425,13 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
         "X_rf_train": X_rf_train, "y_rf_train": y_rf_train,
         "X_test_std": X_test_std
     }
-    st.success("Preprocessing complete. Proceed to **3) Model Training**.")
+    st.success("Preprocessing complete. Proceed to **Model Training**.")
 
 # ==============================
 # Page 3 — Model Training
 # ==============================
 def page_train():
-    st.title("3) Model Training")
+    st.title(" Model Training")
     required = ["X_train_emb", "X_test_emb", "y_train", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in required):
         st.warning("Please finish **2) Data Preprocessing** first."); return
@@ -440,7 +440,7 @@ def page_train():
     X_rf_train = cache["X_rf_train"]; y_rf_train = cache["y_rf_train"]
 
     st.subheader("Hyperparameters")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3 = st.columns(
     with c1: C = st.number_input("Logistic Regression C", 0.01, 100.0, 1.0, step=0.05)
     with c2: n_estimators = st.number_input("RandomForest n_estimators", 50, 1000, 300, step=50)
     with c3:
@@ -459,7 +459,7 @@ def page_train():
             rf.fit(X_rf_train, y_rf_train)
 
     st.session_state.models = {"lr": lr, "rf": rf}
-    st.success("Training complete. Proceed to **4) Model Evaluation**.")
+    st.success("Training complete. Proceed to **Model Evaluation**.")
 
 # ==============================
 # Page 4 — Model Evaluation
@@ -469,10 +469,10 @@ def _safe_auc(y_true, scores):
     except Exception: return float("nan")
 
 def page_evaluation():
-    st.title("4) Model Evaluation")
+    st.title("Model Evaluation")
     req = ["models", "X_test_emb", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
-        st.warning("Train models in **3) Model Training** first."); return
+        st.warning("Train models in ** Model Training** first."); return
 
     models = st.session_state.models
     scaler = st.session_state.scaler
@@ -532,7 +532,7 @@ def page_evaluation():
 # Page 5 — Prediction
 # ==============================
 def page_prediction():
-    st.title("5) Prediction")
+    st.title("Prediction")
     req = ["models", "scaler", "elmo"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
         st.warning("Please complete **Training** before predicting."); return
