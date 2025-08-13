@@ -1,6 +1,6 @@
-
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
+"""
 #Sarcasm Detection App (ELMo + Logistic Regression / Random Forest)
 #Imbalance handling: **Downsampling** (majority class), with adjustable majority:minority ratio.
 #Pages: Upload → Preprocess → Train → Evaluate → Predict (single + batch).
@@ -12,7 +12,7 @@ pip install streamlit scikit-learn matplotlib pandas numpy tensorflow==2.15.0 te
 
 #Run:
 #streamlit run sarcasm_downsample_app.py
-
+"""
 import io
 import os
 import re
