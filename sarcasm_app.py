@@ -227,6 +227,43 @@ def downsample_ratio(X, y, maj_mult=1.0, random_state=42):
     return X[keep_idx], y[keep_idx]
 
 # ==============================
+# Downsampling Distribution Plot (Streamlit)
+# ==============================
+def st_plot_dist(y_before, y_after, title):
+    """Bar chart: class counts before vs after downsampling (Streamlit)."""
+    import numpy as np
+    import matplotlib.pyplot as plt
+    y_before = np.asarray(y_before).astype(int)
+    y_after  = np.asarray(y_after).astype(int)
+    # count 0/1 for both arrays
+    def _counts(y):
+        c = np.bincount(y, minlength=2)[:2]
+        return int(c[0]), int(c[1])
+    c0b, c1b = _counts(y_before)
+    c0a, c1a = _counts(y_after)
+
+    labels = ["Class 0 (Not Sarcastic)", "Class 1 (Sarcastic)"]
+    x = np.arange(len(labels))
+    width = 0.35
+
+    fig = plt.figure(figsize=(7, 5))
+    plt.bar(x - width/2, [c0b, c1b], width, label="Before")
+    plt.bar(x + width/2, [c0a, c1a], width, label="After")
+    # annotate bars with counts
+    for i, v in enumerate([c0b, c1b]):
+        plt.text(x[i] - width/2, v, str(v), ha='center', va='bottom')
+    for i, v in enumerate([c0a, c1a]):
+        plt.text(x[i] + width/2, v, str(v), ha='center', va='bottom')
+
+    plt.xticks(x, labels)
+    plt.ylabel("Count")
+    plt.title(title)
+    plt.legend(loc="best")
+    plt.tight_layout()
+    st.pyplot(fig)
+
+
+# ==============================
 # Sidebar Navigation
 # ==============================
 st.sidebar.title("📰 Sarcasm Detector (ELMo + Downsampling)")
@@ -443,7 +480,14 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
     st.session_state.y_train     = y_train
     st.session_state.y_test      = y_test
     st.session_state.scaler      = scaler
-    st.session_state.prep_cache  = {
+    
+
+# -- Visualize distribution before vs after downsampling
+st.subheader("Downsampling distribution charts")
+st.caption("Before vs after downsampling (training set).")
+st_plot_dist(y_before=y_train, y_after=y_lr_train, title="Class distribution (LR view)")
+st_plot_dist(y_before=y_train, y_after=y_rf_train, title="Class distribution (RF view)")
+st.session_state.prep_cache  = {
         "X_lr_train": X_lr_train, "y_lr_train": y_lr_train,
         "X_rf_train": X_rf_train, "y_rf_train": y_rf_train,
         "X_test_std": X_test_std
