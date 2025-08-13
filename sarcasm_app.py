@@ -7,7 +7,7 @@ and stored **inside page_preprocess()** before being referenced anywhere else.
 This prevents NameError like "X_lr_train is not defined".
 
 Pages:
-Data Upload
+1) Data Upload
 2) Data Preprocessing (tunable downsampling ratio + charts)
 3) Model Training
 4) Model Evaluation
@@ -263,7 +263,7 @@ def st_plot_dist(y_before, y_after, title):
 # ==============================
 st.sidebar.title("📰 Sarcasm Detector")
 page = st.sidebar.radio("Navigate", [
-    "Data Upload",
+    "1) Data Upload",
     "2) Data Preprocessing",
     "3) Model Training",
     "4) Model Evaluation",
@@ -287,10 +287,10 @@ st.sidebar.markdown(
 )
 
 # ==============================
-# Page 1 — Data Upload
+# Page 1 — 1) Data Upload
 # ==============================
 def page_upload():
-    st.title("Data Upload")
+    st.title("1) Data Upload")
     f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
     if f is not None:
         name = f.name.lower()
@@ -328,11 +328,11 @@ def page_upload():
 def page_preprocess():
     st.title("2) Data Preprocessing — Tunable Downsampling + Charts")
     if st.session_state.df is None:
-        st.warning("Please upload a dataset in **Data Upload**."); return
+        st.warning("Please upload a dataset in **1) Data Upload**."); return
     df = st.session_state.df.copy()
     text_col = st.session_state.text_col; label_col = st.session_state.label_col
     if text_col is None or label_col is None:
-        st.warning("Select text and label columns in **Data Upload**."); return
+        st.warning("Select text and label columns in **1) Data Upload**."); return
 
     st.subheader("Text Cleaning")
     c1, c2, c3 = st.columns(3)
