@@ -1,12 +1,29 @@
-
 # -*- coding: utf-8 -*-
 """
-Sarcasm Detection App — ELMo + Balanced Downsampling (1:1) + Logistic Regression / Random Forest
-Pages: Upload → Preprocess (balanced downsampling) → Train → Evaluate → Predict (single & batch)
-Metrics: Precision, Recall, F1, ROC-AUC
-UI: Professional dark theme; tabbed evaluation; robust error handling
+Sarcasm Detection App — ELMo Embeddings + Downsampling + Logistic Regression / Random Forest
+-------------------------------------------------------------------------------------------
+This Streamlit application demonstrates an end‑to‑end text classification pipeline on the
+Kaggle "News Headlines with Sarcasm" dataset. It provides five pages:
+
+1) Data Upload        — Load CSV/JSON/JSONL and map text/label columns.
+2) Data Preprocessing — Clean text, split the data, **balance with downsampling (1:1)**,
+                        compute ELMo embeddings, and standardize features for LR.
+3) Model Training     — Train Logistic Regression and Random Forest on the downsampled train set.
+4) Model Evaluation   — Compare precision, recall, F1, and ROC‑AUC; show confusion matrices & ROC curves.
+5) Prediction         — Predict on a single text or a batch CSV and download results.
+
+Notes on ELMo / TensorFlow Hub:
+- ELMo v3 is a TF1-style `hub.Module`. Use TF 2.15 in TF1-compat mode + tensorflow-hub==0.12.0.
+- If these versions are not present, the app explains what to install.
+
+Run:
+    pip install streamlit scikit-learn matplotlib pandas numpy tensorflow==2.15.0 tensorflow-hub==0.12.0
+    streamlit run sarcasm_elmo_downsample_commented_app.py
 """
 
+# ==============================
+# Imports
+# ==============================
 import os, io, re, json, base64
 from datetime import datetime
 
@@ -14,31 +31,38 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-# ML
+# Scikit-learn building blocks
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, roc_curve, confusion_matrix
+from sklearn.metrics import (
+    precision_score, recall_score, f1_score, roc_auc_score, roc_curve, confusion_matrix
+)
 
-# ------- TF Hub / ELMo (TF1-style) -------
+# ------------------------------
+# ELMo via TensorFlow Hub (TF1)
+# ------------------------------
 ELMO_URL = "https://tfhub.dev/google/elmo/3"
 TF_OK = True
 try:
     import tensorflow as tf
     import tensorflow_hub as hub
+    # ELMo v3 is a TF1 module, so we use TF1-style graph execution.
     tf.get_logger().setLevel('ERROR')
-    # ELMo v3 is a TF1 module; use TF1 compatibility:
     tf.compat.v1.disable_eager_execution()
-    _HAS_MODULE = hasattr(hub, "Module")
+    _HAS_MODULE = hasattr(hub, "Module")  # required for ELMo v3
     if not _HAS_MODULE:
         TF_OK = False
 except Exception:
     TF_OK = False
 
-# --------------- Page Config & Theme ---------------
+# ==============================
+# Streamlit: Page Config & Theme
+# ==============================
 st.set_page_config(page_title="Sarcasm Detection (ELMo + LR/RF)", page_icon="📰", layout="wide")
 
+# -- Lightweight, professional dark theme via CSS.
 st.markdown(
     """
     <style>
@@ -65,30 +89,45 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --------------- Session State helpers ---------------
+# ==============================
+# Session-State Initialization
+# ==============================
 def _init_state():
+    """Define all session-state variables used across pages (safe default values)."""
     ss = st.session_state
-    ss.setdefault("df", None)
-    ss.setdefault("text_col", None)
-    ss.setdefault("label_col", None)
-    ss.setdefault("clean_lower", True)
-    ss.setdefault("clean_punct", True)
-    ss.setdefault("dedupe", True)
-    ss.setdefault("test_size", 0.2)
-    ss.setdefault("random_state", 42)
-    ss.setdefault("elmo", None)           # ELMo embedder instance
-    ss.setdefault("X_train_emb", None); ss.setdefault("X_test_emb", None)
-    ss.setdefault("y_train", None); ss.setdefault("y_test", None)
-    ss.setdefault("scaler", None)
-    ss.setdefault("models", {})
-    ss.setdefault("threshold", 0.5)
-    ss.setdefault("prep_cache", None)
+    ss.setdefault("df", None)                 # raw dataframe
+    ss.setdefault("text_col", None)           # selected text column name
+    ss.setdefault("label_col", None)          # selected label column name
+    ss.setdefault("clean_lower", True)        # lowercase text
+    ss.setdefault("clean_punct", True)        # remove punctuation
+    ss.setdefault("dedupe", True)             # drop duplicate texts
+    ss.setdefault("test_size", 0.2)           # fraction for test split
+    ss.setdefault("random_state", 42)         # RNG seed for reproducibility
+    ss.setdefault("elmo", None)               # ELMo embedder instance
+    ss.setdefault("X_train_emb", None)        # train embeddings (raw ELMo)
+    ss.setdefault("X_test_emb", None)         # test embeddings (raw ELMo)
+    ss.setdefault("y_train", None)            # train labels
+    ss.setdefault("y_test", None)             # test labels
+    ss.setdefault("scaler", None)             # StandardScaler (for LR input)
+    ss.setdefault("models", {})               # trained models {"lr":..., "rf":...}
+    ss.setdefault("threshold", 0.5)           # classification threshold in evaluation
+    ss.setdefault("prep_cache", None)         # extra cached arrays (std features etc.)
 
 _init_state()
 
-# --------------- Basic cleaning ---------------
+# ==============================
+# Basic Text Cleaning
+# ==============================
 _punct_pattern = re.compile(r"[^\w\s]")
+
 def basic_clean(text, lower=True, remove_punct=True):
+    """
+    Simple preprocessing for short headlines:
+    - strip whitespace
+    - lowercase (optional)
+    - remove punctuation (optional)
+    - squeeze multiple spaces into one
+    """
     if not isinstance(text, str):
         return ""
     t = text.strip()
@@ -97,8 +136,14 @@ def basic_clean(text, lower=True, remove_punct=True):
     t = re.sub(r"\s+", " ", t)
     return t
 
-# --------------- ELMo Embedder ---------------
+# ==============================
+# ELMo Embedder (TF1 graph mode)
+# ==============================
 class ELMoEmbedder:
+    """
+    Thin wrapper around TF Hub ELMo v3 (TF1-style). Produces a 1024-dim embedding per text
+    by averaging token-level 'elmo' outputs.
+    """
     def __init__(self, url: str = ELMO_URL):
         if not TF_OK:
             st.error("""TensorFlow / tensorflow-hub not available or incompatible.
@@ -110,15 +155,21 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
             raise RuntimeError("TF/Hub unavailable")
         self.graph = tf.Graph()
         with self.graph.as_default():
+            # Placeholder for a batch of strings
             self.text_input = tf.compat.v1.placeholder(tf.string, shape=[None], name="text_input")
+            # Load TF Hub module (frozen graph)
             self.module = hub.Module(url, trainable=False, name="elmo_module")
+            # 'elmo' => (batch, timesteps, 1024); we average over time to get sentence embeddings.
             elmo_out = self.module(self.text_input, signature="default", as_dict=True)["elmo"]
             self.sentence_emb = tf.reduce_mean(elmo_out, axis=1, name="sentence_embedding")
+            # Initialize variables and tables
             self.init_op = tf.group(tf.compat.v1.global_variables_initializer(), tf.compat.v1.tables_initializer())
+        # Create session and run initializers
         self.sess = tf.compat.v1.Session(graph=self.graph)
         self.sess.run(self.init_op)
 
     def embed(self, texts, batch_size=32):
+        """Compute ELMo embeddings for a list/Series/array of strings. Returns np.ndarray [N, 1024]."""
         if isinstance(texts, (pd.Series, list, tuple)):
             texts = list(texts)
         elif isinstance(texts, np.ndarray):
@@ -132,16 +183,22 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
             mats.append(vecs)
         return np.vstack(mats)
 
-# --------------- Balanced Downsampling helper ---------------
+# ==============================
+# Downsampling (Class Balance 1:1)
+# ==============================
 def balanced_downsample(X, y, random_state=42):
-    """Downsample majority class so that classes are 1:1 in the *training* set."""
+    """
+    Downsample the majority class to match the minority class count (1:1 balance).
+    Applied **only** to the training set.
+    """
     rng = np.random.RandomState(random_state)
     y = np.asarray(y).astype(int)
     idx0 = np.where(y == 0)[0]
     idx1 = np.where(y == 1)[0]
     n0, n1 = len(idx0), len(idx1)
     if n0 == 0 or n1 == 0:
-        return X, y  # can't balance if a class is missing
+        # Can't balance if a class is missing
+        return X, y
     if n0 > n1:
         keep_maj = rng.choice(idx0, size=n1, replace=False)
         keep_idx = np.concatenate([idx1, keep_maj])
@@ -153,8 +210,10 @@ def balanced_downsample(X, y, random_state=42):
     rng.shuffle(keep_idx)
     return X[keep_idx], y[keep_idx]
 
-# --------------- Sidebar Navigation ---------------
-st.sidebar.title("📰 Sarcasm Detector (Balanced Downsampling)")
+# ==============================
+# Sidebar Navigation
+# ==============================
+st.sidebar.title("📰 Sarcasm Detector (ELMo + Downsampling)")
 page = st.sidebar.radio("Navigate", [
     "1) Data Upload",
     "2) Data Preprocessing",
@@ -166,12 +225,15 @@ page = st.sidebar.radio("Navigate", [
 st.sidebar.markdown("---")
 st.sidebar.caption("ELMo → Logistic Regression / Random Forest • Precision / Recall / F1 / ROC-AUC")
 
-# --------------- Page 1: Upload ---------------
+# ==============================
+# Page 1 — Data Upload
+# ==============================
 def page_upload():
+    """Read a dataset file (CSV / JSON / JSONL) and let the user map text/label columns."""
     st.title("1) Data Upload")
-    st.markdown("Upload the Kaggle **Sarcasm** dataset. Supports **CSV** and **JSON** (array or JSONL).")
-    f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
+    st.markdown("Upload the Kaggle **Sarcasm** dataset (CSV/JSON/JSONL).")
 
+    f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
     if f is not None:
         name = f.name.lower()
         try:
@@ -181,6 +243,7 @@ def page_upload():
                 df = pd.read_json(f, lines=True)
             elif name.endswith(".json"):
                 content = f.read()
+                # Try JSON array; fallback to JSON lines
                 try:
                     data = json.loads(content)
                     df = pd.DataFrame(data)
@@ -199,6 +262,7 @@ def page_upload():
         with st.expander("Preview (first 10 rows)", expanded=True):
             st.dataframe(df.head(10), use_container_width=True)
 
+        # Column mapping UI
         cols = list(df.columns)
         st.subheader("Select Columns")
         default_text = "headline" if "headline" in cols else cols[0]
@@ -208,8 +272,14 @@ def page_upload():
 
         st.info("Tip: Common columns are **headline** (text) and **is_sarcastic** (label).")
 
-# --------------- Page 2: Preprocessing ---------------
+# ==============================
+# Page 2 — Data Preprocessing
+# ==============================
 def page_preprocess():
+    """
+    Clean text, split data, create ELMo embeddings, standardize inputs, and
+    perform **balanced downsampling (1:1)** on the training set.
+    """
     st.title("2) Data Preprocessing — Balanced Downsampling (1:1)")
 
     if st.session_state.df is None:
@@ -223,6 +293,7 @@ def page_preprocess():
         st.warning("Select text and label columns in **1) Data Upload**.")
         return
 
+    # -- Cleaning controls
     st.subheader("Text Cleaning")
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -232,35 +303,40 @@ def page_preprocess():
     with c3:
         st.session_state.dedupe = st.checkbox("drop duplicate texts", value=st.session_state.dedupe)
 
-    df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
+    # -- Apply basic cleaning
+    df["__text__"] = df[text_col].astype(str).apply(
+        lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct)
+    )
 
-    # Robust label parsing
+    # -- Robust label parsing: accept bool/strings or numeric, fallback to 0
     raw_lbl = df[label_col]
     if raw_lbl.dtype == bool:
         df["__label__"] = raw_lbl.astype(int)
     else:
-        m = raw_lbl.astype(str).str.strip().str.lower().map({
+        mapping = raw_lbl.astype(str).str.strip().str.lower().map({
             "1": 1, "true": 1, "yes": 1, "sarcastic": 1,
             "0": 0, "false": 0, "no": 0, "not sarcastic": 0
         })
         df["__label__"] = pd.to_numeric(raw_lbl, errors="coerce")
-        df.loc[df["__label__"].isna(), "__label__"] = m
+        df.loc[df["__label__"].isna(), "__label__"] = mapping
         df["__label__"] = df["__label__"].fillna(0).astype(int)
 
+    # -- Optional deduplication (helps remove exact duplicate headlines)
     if st.session_state.dedupe:
         df = df.drop_duplicates(subset="__text__")
 
+    # -- Quick class balance report
     st.markdown(f'<div class="pill">Rows after cleaning: {len(df):,}</div>', unsafe_allow_html=True)
-
     with st.expander("Class balance", expanded=True):
         vc = df["__label__"].value_counts().sort_index()
-        n0 = int(vc.get(0, 0)); n1 = int(vc.get(1, 0)); N = n0 + n1 if (n0+n1)>0 else 1
+        n0 = int(vc.get(0, 0)); n1 = int(vc.get(1, 0)); N = max(1, n0 + n1)
         st.write(pd.DataFrame({
             "class": ["Not Sarcastic (0)", "Sarcastic (1)"],
             "count": [n0, n1],
             "percent": [round(100*n0/N, 2), round(100*n1/N, 2)]
         }))
 
+    # -- Train/Test split controls
     st.subheader("Train/Test Split")
     c1, c2 = st.columns(2)
     with c1:
@@ -268,21 +344,24 @@ def page_preprocess():
     with c2:
         st.session_state.random_state = st.number_input("Random state", 0, 10_000, int(st.session_state.random_state), step=1)
 
-    # Choose stratify only if each class has >= 2 examples
+    # -- Use stratify only if each class has >= 2 examples to avoid sklearn error
     counts = df["__label__"].value_counts()
     min_count = int(counts.min()) if len(counts) > 0 else 0
     stratify_arg = df["__label__"].values if min_count >= 2 else None
     if stratify_arg is None:
-        st.warning("Stratified split disabled because at least one class has < 2 samples. Consider adjusting cleaning, label mapping, or adding data.")
+        st.warning("Stratified split disabled because at least one class has < 2 samples.")
 
-    # Split
+    # -- Split data
     X = df["__text__"].values
     y = df["__label__"].values
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=st.session_state.test_size, random_state=st.session_state.random_state, stratify=stratify_arg
+        X, y,
+        test_size=st.session_state.test_size,
+        random_state=st.session_state.random_state,
+        stratify=stratify_arg
     )
 
-    # ELMo init (once)
+    # -- Load ELMo (first time only)
     st.subheader("ELMo Embeddings")
     if st.session_state.elmo is None:
         if not TF_OK:
@@ -301,22 +380,23 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
                 return
         st.success("ELMo loaded.")
 
-    # Embed train/test
+    # -- Embed train/test with ELMo (batched for efficiency)
     bsz = 32
     with st.spinner("Embedding training texts with ELMo…"):
         X_train_emb = st.session_state.elmo.embed(X_train, batch_size=bsz)
     with st.spinner("Embedding test texts with ELMo…"):
         X_test_emb = st.session_state.elmo.embed(X_test, batch_size=bsz)
 
-    # Scale for LR; RF uses raw embeddings
+    # -- Standardize embeddings for Logistic Regression (helps optimization)
     scaler = StandardScaler()
     X_train_std = scaler.fit_transform(X_train_emb)
-    X_test_std = scaler.transform(X_test_emb)
+    X_test_std  = scaler.transform(X_test_emb)
 
-    # Balanced Downsample (train only), both views
+    # -- Balanced downsampling on the training set (both LR & RF views)
     X_lr_train, y_lr_train = balanced_downsample(X_train_std, y_train, random_state=st.session_state.random_state)
     X_rf_train, y_rf_train = balanced_downsample(X_train_emb, y_train, random_state=st.session_state.random_state)
 
+    # -- Report pre/post downsampling counts to the user
     def _counts(yv):
         v = pd.Series(yv).value_counts().sort_index()
         return int(v.get(0,0)), int(v.get(1,0))
@@ -334,13 +414,13 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
             "1_after": [n1_lr_after, n1_rf_after],
         }))
 
-    # Save to state
+    # -- Persist artifacts to session state for the next pages
     st.session_state.X_train_emb = X_train_emb
-    st.session_state.X_test_emb = X_test_emb
-    st.session_state.y_train = y_train
-    st.session_state.y_test = y_test
-    st.session_state.scaler = scaler
-    st.session_state.prep_cache = {
+    st.session_state.X_test_emb  = X_test_emb
+    st.session_state.y_train     = y_train
+    st.session_state.y_test      = y_test
+    st.session_state.scaler      = scaler
+    st.session_state.prep_cache  = {
         "X_lr_train": X_lr_train, "y_lr_train": y_lr_train,
         "X_rf_train": X_rf_train, "y_rf_train": y_rf_train,
         "X_test_std": X_test_std
@@ -348,8 +428,11 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
 
     st.success("Preprocessing complete. Proceed to **3) Model Training**.")
 
-# --------------- Page 3: Training ---------------
+# ==============================
+# Page 3 — Model Training
+# ==============================
 def page_train():
+    """Train Logistic Regression (on standardized embeddings) and Random Forest (raw embeddings)."""
     st.title("3) Model Training")
     required = ["X_train_emb", "X_test_emb", "y_train", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in required):
@@ -360,6 +443,7 @@ def page_train():
     X_lr_train = cache["X_lr_train"]; y_lr_train = cache["y_lr_train"]
     X_rf_train = cache["X_rf_train"]; y_rf_train = cache["y_rf_train"]
 
+    # -- Simple hyperparameter controls
     st.subheader("Hyperparameters")
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -370,90 +454,105 @@ def page_train():
         max_depth = st.number_input("RandomForest max_depth (0 = None)", 0, 100, 0, step=1)
         max_depth = None if max_depth == 0 else int(max_depth)
 
+    # -- Train LR
     colA, colB = st.columns(2)
     with colA:
         with st.spinner("Training Logistic Regression…"):
             lr = LogisticRegression(C=C, solver="liblinear", random_state=st.session_state.random_state)
             lr.fit(X_lr_train, y_lr_train)
+
+    # -- Train RF
     with colB:
         with st.spinner("Training Random Forest…"):
             rf = RandomForestClassifier(
-                n_estimators=int(n_estimators), max_depth=max_depth,
-                random_state=st.session_state.random_state, n_jobs=-1
+                n_estimators=int(n_estimators),
+                max_depth=max_depth,
+                random_state=st.session_state.random_state,
+                n_jobs=-1
             )
             rf.fit(X_rf_train, y_rf_train)
 
     st.session_state.models = {"lr": lr, "rf": rf}
     st.success("Training complete. Proceed to **4) Model Evaluation**.")
 
-# --------------- Metrics table helper ---------------
+# ==============================
+# Evaluation Utilities
+# ==============================
 def metric_table(metrics_dict):
+    """Convert a nested metrics dictionary into a displayable DataFrame."""
     rows = []
     for model_name, m in metrics_dict.items():
         rows.append([model_name, m["Precision"], m["Recall"], m["F1"], m["ROC-AUC"]])
     return pd.DataFrame(rows, columns=["Model", "Precision", "Recall", "F1", "ROC-AUC"])
 
 def _safe_roc_auc(y_true, scores):
+    """Compute ROC-AUC, returning NaN when y_true is single-class (sklearn limitation)."""
     try:
         return roc_auc_score(y_true, scores)
     except Exception:
         return float("nan")
 
-# --------------- Page 4: Evaluation ---------------
+# ==============================
+# Page 4 — Model Evaluation
+# ==============================
 def page_evaluation():
+    """Compare LR vs RF using Precision, Recall, F1, ROC-AUC; show confusion matrices and ROC curves."""
     st.title("4) Model Evaluation")
     req = ["models", "X_test_emb", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
         st.warning("Train models in **3) Model Training** first.")
         return
 
-    models = st.session_state.models
-    scaler = st.session_state.scaler
+    models     = st.session_state.models
+    scaler     = st.session_state.scaler
     X_test_emb = st.session_state.X_test_emb
-    y_test = st.session_state.y_test
+    y_test     = st.session_state.y_test
     X_test_std = st.session_state.prep_cache["X_test_std"]
 
     lr = models["lr"]
     rf = models["rf"]
 
+    # -- Probabilities for ROC-AUC; predictions will use a chosen threshold
     lr_proba = lr.predict_proba(X_test_std)[:, 1]
     rf_proba = rf.predict_proba(X_test_emb)[:, 1]
 
-    st.session_state.threshold = st.slider("Decision threshold (affects Precision/Recall/F1)", 0.1, 0.9, float(st.session_state.threshold), 0.05)
+    # -- Decision threshold slider (affects P/R/F1; not ROC-AUC)
+    st.session_state.threshold = st.slider(
+        "Decision threshold (affects Precision/Recall/F1)", 0.1, 0.9, float(st.session_state.threshold), 0.05
+    )
     thresh = st.session_state.threshold
     lr_pred = (lr_proba >= thresh).astype(int)
     rf_pred = (rf_proba >= thresh).astype(int)
 
-    auc_lr = _safe_roc_auc(y_test, lr_proba)
-    auc_rf = _safe_roc_auc(y_test, rf_proba)
-
+    # -- Compute metrics safely (ROC-AUC may be NaN if single-class y_test)
     metrics = {
         "Logistic Regression": {
             "Precision": precision_score(y_test, lr_pred, zero_division=0),
-            "Recall": recall_score(y_test, lr_pred, zero_division=0),
-            "F1": f1_score(y_test, lr_pred, zero_division=0),
-            "ROC-AUC": auc_lr,
+            "Recall":    recall_score(y_test, lr_pred, zero_division=0),
+            "F1":        f1_score(y_test, lr_pred, zero_division=0),
+            "ROC-AUC":   _safe_roc_auc(y_test, lr_proba),
         },
         "Random Forest": {
             "Precision": precision_score(y_test, rf_pred, zero_division=0),
-            "Recall": recall_score(y_test, rf_pred, zero_division=0),
-            "F1": f1_score(y_test, rf_pred, zero_division=0),
-            "ROC-AUC": auc_rf,
+            "Recall":    recall_score(y_test, rf_pred, zero_division=0),
+            "F1":        f1_score(y_test, rf_pred, zero_division=0),
+            "ROC-AUC":   _safe_roc_auc(y_test, rf_proba),
         }
     }
 
+    # -- Tabs: metrics table, confusion matrices, and ROC curves
     tab_perf, tab_cm, tab_roc = st.tabs(["Performance", "Confusion Matrices", "ROC Curves"])
 
     with tab_perf:
         st.subheader("Performance Comparison")
         dfm = metric_table(metrics).round(4)
         st.dataframe(dfm, use_container_width=True)
-        if not dfm.empty and {"Model","F1"}.issubset(set(dfm.columns)):
-            try:
-                better = "Logistic Regression" if dfm.set_index("Model").loc["Logistic Regression", "F1"] >= dfm.set_index("Model").loc["Random Forest", "F1"] else "Random Forest"
-                st.markdown(f"**Better F1 (at threshold={thresh:.2f}):** `{better}`")
-            except Exception:
-                pass
+        # Simple "which is better by F1" indicator
+        try:
+            better = "Logistic Regression" if dfm.set_index("Model").loc["Logistic Regression", "F1"] >= dfm.set_index("Model").loc["Random Forest", "F1"] else "Random Forest"
+            st.markdown(f"**Better F1 (at threshold={thresh:.2f}):** `{better}`")
+        except Exception:
+            pass
 
     with tab_cm:
         c1, c2 = st.columns(2)
@@ -469,19 +568,28 @@ def page_evaluation():
     with tab_roc:
         import matplotlib.pyplot as plt
         if len(np.unique(y_test)) < 2:
-            st.warning("ROC curves require both classes in y_test. Your test split has a single class. Try reducing test size or disabling deduplication.")
+            st.warning("ROC curves require both classes in y_test. Your test split has a single class. "
+                       "Try reducing test size or disabling deduplication.")
         else:
             fpr_lr, tpr_lr, _ = roc_curve(y_test, lr_proba)
             fpr_rf, tpr_rf, _ = roc_curve(y_test, rf_proba)
             fig = plt.figure(figsize=(6, 5))
-            plt.plot(fpr_lr, tpr_lr, label=f"LogReg (AUC={auc_lr:.3f})")
-            plt.plot(fpr_rf, tpr_rf, label=f"RandForest (AUC={auc_rf:.3f})")
+            plt.plot(fpr_lr, tpr_lr, label=f"LogReg (AUC={metrics['Logistic Regression']['ROC-AUC']:.3f})")
+            plt.plot(fpr_rf, tpr_rf, label=f"RandForest (AUC={metrics['Random Forest']['ROC-AUC']:.3f})")
             plt.plot([0, 1], [0, 1], linestyle="--")
-            plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate"); plt.title("ROC Curves"); plt.legend(loc="lower right")
+            plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate")
+            plt.title("ROC Curves"); plt.legend(loc="lower right")
             st.pyplot(fig)
 
-# --------------- Page 5: Prediction ---------------
+# ==============================
+# Page 5 — Prediction
+# ==============================
 def page_prediction():
+    """
+    Two modes:
+    - Single text: quick input box, returns LR/RF probabilities and classes.
+    - Batch CSV: upload a file, choose the text column, and download predictions.
+    """
     st.title("5) Prediction")
 
     req = ["models", "scaler", "elmo"]
@@ -489,15 +597,17 @@ def page_prediction():
         st.warning("Please complete **Training** before predicting.")
         return
 
-    models = st.session_state.models
-    scaler = st.session_state.scaler
-    elmo = st.session_state.elmo
+    models    = st.session_state.models
+    scaler    = st.session_state.scaler
+    elmo      = st.session_state.elmo
     threshold = st.session_state.get("threshold", 0.5)
 
     tab_single, tab_batch = st.tabs(["Single Text", "Batch Upload"])
 
+    # -- Single text prediction
     with tab_single:
-        text = st.text_area("Enter headline / text", height=120, placeholder="e.g., 'Local man wins lottery, quits job to pursue full-time napping career'")
+        text = st.text_area("Enter headline / text", height=120,
+                            placeholder="e.g., 'Local man wins lottery, quits job to pursue full-time napping career'")
         if st.button("Predict"):
             if not text.strip():
                 st.warning("Enter some text.")
@@ -515,6 +625,7 @@ def page_prediction():
                 with c2:
                     st.metric("Random Forest", f"{'Sarcastic' if rf_pred else 'Not Sarcastic'}", delta=f"P={rf_proba:.3f}")
 
+    # -- Batch CSV prediction
     with tab_batch:
         st.write("Upload a CSV for batch predictions.")
         bf = st.file_uploader("Upload CSV", type=["csv"], key="batch_csv")
@@ -532,27 +643,32 @@ def page_prediction():
                 return
 
             with st.spinner("Embedding and predicting…"):
-                texts = bdf[text_col_name].astype(str).tolist()
-                emb = elmo.embed(texts, batch_size=32)
-                x_std = scaler.transform(emb)
-                lr_proba = models["lr"].predict_proba(x_std)[:, 1]
-                rf_proba = models["rf"].predict_proba(emb)[:, 1]
-                lr_pred = (lr_proba >= threshold).astype(int)
-                rf_pred = (rf_proba >= threshold).astype(int)
+                texts   = bdf[text_col_name].astype(str).tolist()
+                emb     = elmo.embed(texts, batch_size=32)
+                x_std   = scaler.transform(emb)
+                lr_prob = models["lr"].predict_proba(x_std)[:, 1]
+                rf_prob = models["rf"].predict_proba(emb)[:, 1]
+                lr_pred = (lr_prob >= threshold).astype(int)
+                rf_pred = (rf_prob >= threshold).astype(int)
 
                 out = bdf.copy()
-                out["proba_lr"] = lr_proba
-                out["pred_lr"] = lr_pred
-                out["proba_rf"] = rf_proba
-                out["pred_rf"] = rf_pred
+                out["proba_lr"] = lr_prob
+                out["pred_lr"]  = lr_pred
+                out["proba_rf"] = rf_prob
+                out["pred_rf"]  = rf_pred
 
+            # -- Offer a download of results
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             out_path = f"sarcasm_predictions_{ts}.csv"
             out.to_csv(out_path, index=False)
             st.success(f"Done. Saved to {out_path}")
-            st.download_button("Download predictions CSV", data=out.to_csv(index=False).encode(), file_name=out_path, mime="text/csv")
+            st.download_button("Download predictions CSV",
+                               data=out.to_csv(index=False).encode(),
+                               file_name=out_path, mime="text/csv")
 
-# --------------- Router ---------------
+# ==============================
+# Router: Display the selected page
+# ==============================
 if page.startswith("1"):
     page_upload()
 elif page.startswith("2"):
