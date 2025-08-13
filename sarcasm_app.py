@@ -271,6 +271,20 @@ page = st.sidebar.radio("Navigate", [
 ])
 st.sidebar.markdown("---")
 st.sidebar.caption("ELMo → Logistic Regression / Random Forest • Precision / Recall / F1 / ROC-AUC")
+st.sidebar.markdown("---")
+st.sidebar.markdown(
+    """
+    <div style='font-size:12px; line-height:1.3;'>
+    Erwin K. Opare-Essel - 22254064<br>
+    Emmanuel Oduro Dwamena - 11410636<br>
+    Elizabeth Afranewaa Abayateye - 22252474<br>
+    Elien Samira Osumanu - 11410414<br>
+    Innocent Arkaah- 11410788<br>
+    Sheena Pognaa Dasoberi - 22252392
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ==============================
 # Page 1 — Data Upload
