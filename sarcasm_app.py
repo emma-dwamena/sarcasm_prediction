@@ -1,11 +1,12 @@
 
 # -*- coding: utf-8 -*-
-"""
+
 Sarcasm Detection App — ELMo + Downsampling + Logistic Regression / Random Forest
+Robust to small/degenerate class counts in splits.
 Pages: Upload → Preprocess (downsampling) → Train → Evaluate → Predict (single & batch)
 Metrics: Precision, Recall, F1, ROC-AUC
 UI: Professional dark theme; tabbed evaluation
-"""
+
 import os, io, re, json, base64
 from datetime import datetime
 
@@ -29,7 +30,6 @@ try:
     tf.get_logger().setLevel('ERROR')
     # ELMo v3 is a TF1 module; use TF1 compatibility:
     tf.compat.v1.disable_eager_execution()
-    # Note: requires tensorflow-hub<=0.12.0 for hub.Module
     _HAS_MODULE = hasattr(hub, "Module")
     if not _HAS_MODULE:
         TF_OK = False
@@ -102,10 +102,9 @@ class ELMoEmbedder:
     def __init__(self, url: str = ELMO_URL):
         if not TF_OK:
             raise RuntimeError("""TensorFlow / tensorflow-hub not available or incompatible.
-Required:
+Required (exact versions):
   pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
-(ELMo v3 uses TF1 hub.Module; newer tensorflow-hub removes hub.Module.)"""
-            )
+(ELMo v3 uses TF1 hub.Module; newer tensorflow-hub removes hub.Module.)""")
         self.graph = tf.Graph()
         with self.graph.as_default():
             self.text_input = tf.compat.v1.placeholder(tf.string, shape=[None], name="text_input")
@@ -236,7 +235,21 @@ def page_preprocess():
         st.session_state.dedupe = st.checkbox("drop duplicate texts", value=st.session_state.dedupe)
 
     df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
-    df["__label__"] = pd.to_numeric(df[label_col], errors="coerce").fillna(0).astype(int)
+
+    # Robust label parsing
+    raw_lbl = df[label_col]
+    if raw_lbl.dtype == bool:
+        df["__label__"] = raw_lbl.astype(int)
+    else:
+        # Map common strings
+        m = raw_lbl.astype(str).str.strip().str.lower().map({
+            "1": 1, "true": 1, "yes": 1, "sarcastic": 1,
+            "0": 0, "false": 0, "no": 0, "not sarcastic": 0
+        })
+        df["__label__"] = pd.to_numeric(raw_lbl, errors="coerce")
+        df.loc[df["__label__"].isna(), "__label__"] = m
+        df["__label__"] = df["__label__"].fillna(0).astype(int)
+
     if st.session_state.dedupe:
         df = df.drop_duplicates(subset="__text__")
 
@@ -258,16 +271,18 @@ def page_preprocess():
     with c2:
         st.session_state.random_state = st.number_input("Random state", 0, 10_000, int(st.session_state.random_state), step=1)
 
-    # Downsampling config
-    st.subheader("Imbalance Handling — Downsampling")
-    st.caption("Reduce the majority class **in the training set only**. Target majority:minority ratio (≥ 1.0). Example: 1.0 → 50/50; 1.5 → majority is 1.5× minority.")
-    st.session_state.down_maj_mult = st.slider("Target majority:minority ratio after downsampling", 1.0, 3.0, float(st.session_state.down_maj_mult), 0.1)
+    # Choose stratify only if each class has >= 2 examples
+    counts = df["__label__"].value_counts()
+    min_count = int(counts.min()) if len(counts) > 0 else 0
+    stratify_arg = df["__label__"].values if min_count >= 2 else None
+    if stratify_arg is None:
+        st.warning("Stratified split disabled because at least one class has < 2 samples. Consider adjusting cleaning, label mapping, or adding data.")
 
     # Split
     X = df["__text__"].values
     y = df["__label__"].values
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=st.session_state.test_size, random_state=st.session_state.random_state, stratify=y
+        X, y, test_size=st.session_state.test_size, random_state=st.session_state.random_state, stratify=stratify_arg
     )
 
     # ELMo init (once)
@@ -382,6 +397,12 @@ def metric_table(metrics_dict):
         rows.append([model_name, m["Precision"], m["Recall"], m["F1"], m["ROC-AUC"]])
     return pd.DataFrame(rows, columns=["Model", "Precision", "Recall", "F1", "ROC-AUC"])
 
+def _safe_roc_auc(y_true, scores):
+    try:
+        return roc_auc_score(y_true, scores)
+    except Exception:
+        return float("nan")
+
 # --------------- Page 4: Evaluation ---------------
 def page_evaluation():
     st.title("4) Model Evaluation")
@@ -407,18 +428,21 @@ def page_evaluation():
     lr_pred = (lr_proba >= thresh).astype(int)
     rf_pred = (rf_proba >= thresh).astype(int)
 
+    auc_lr = _safe_roc_auc(y_test, lr_proba)
+    auc_rf = _safe_roc_auc(y_test, rf_proba)
+
     metrics = {
         "Logistic Regression": {
             "Precision": precision_score(y_test, lr_pred, zero_division=0),
             "Recall": recall_score(y_test, lr_pred, zero_division=0),
             "F1": f1_score(y_test, lr_pred, zero_division=0),
-            "ROC-AUC": roc_auc_score(y_test, lr_proba),
+            "ROC-AUC": auc_lr,
         },
         "Random Forest": {
             "Precision": precision_score(y_test, rf_pred, zero_division=0),
             "Recall": recall_score(y_test, rf_pred, zero_division=0),
             "F1": f1_score(y_test, rf_pred, zero_division=0),
-            "ROC-AUC": roc_auc_score(y_test, rf_proba),
+            "ROC-AUC": auc_rf,
         }
     }
 
@@ -428,8 +452,12 @@ def page_evaluation():
         st.subheader("Performance Comparison")
         dfm = metric_table(metrics).round(4)
         st.dataframe(dfm, use_container_width=True)
-        better = "Logistic Regression" if dfm.set_index("Model").loc["Logistic Regression", "F1"] >= dfm.set_index("Model").loc["Random Forest", "F1"] else "Random Forest"
-        st.markdown(f"**Better F1 (at threshold={thresh:.2f}):** `{better}`")
+        if not dfm.empty and {"Model","F1"}.issubset(set(dfm.columns)):
+            try:
+                better = "Logistic Regression" if dfm.set_index("Model").loc["Logistic Regression", "F1"] >= dfm.set_index("Model").loc["Random Forest", "F1"] else "Random Forest"
+                st.markdown(f"**Better F1 (at threshold={thresh:.2f}):** `{better}`")
+            except Exception:
+                pass
 
     with tab_cm:
         c1, c2 = st.columns(2)
@@ -444,14 +472,17 @@ def page_evaluation():
 
     with tab_roc:
         import matplotlib.pyplot as plt
-        fpr_lr, tpr_lr, _ = roc_curve(y_test, lr_proba)
-        fpr_rf, tpr_rf, _ = roc_curve(y_test, rf_proba)
-        fig = plt.figure(figsize=(6, 5))
-        plt.plot(fpr_lr, tpr_lr, label=f"LogReg (AUC={metrics['Logistic Regression']['ROC-AUC']:.3f})")
-        plt.plot(fpr_rf, tpr_rf, label=f"RandForest (AUC={metrics['Random Forest']['ROC-AUC']:.3f})")
-        plt.plot([0, 1], [0, 1], linestyle="--")
-        plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate"); plt.title("ROC Curves"); plt.legend(loc="lower right")
-        st.pyplot(fig)
+        if len(np.unique(y_test)) < 2:
+            st.warning("ROC curves require both classes in y_test. Your test split has a single class. Try reducing test size or disabling deduplication.")
+        else:
+            fpr_lr, tpr_lr, _ = roc_curve(y_test, lr_proba)
+            fpr_rf, tpr_rf, _ = roc_curve(y_test, rf_proba)
+            fig = plt.figure(figsize=(6, 5))
+            plt.plot(fpr_lr, tpr_lr, label=f"LogReg (AUC={auc_lr:.3f})")
+            plt.plot(fpr_rf, tpr_rf, label=f"RandForest (AUC={auc_rf:.3f})")
+            plt.plot([0, 1], [0, 1], linestyle="--")
+            plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate"); plt.title("ROC Curves"); plt.legend(loc="lower right")
+            st.pyplot(fig)
 
 # --------------- Page 5: Prediction ---------------
 def page_prediction():
