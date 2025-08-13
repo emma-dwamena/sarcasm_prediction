@@ -263,11 +263,11 @@ def st_plot_dist(y_before, y_after, title):
 # ==============================
 st.sidebar.title("📰 Sarcasm Detector")
 page = st.sidebar.radio("Navigate", [
-    "1) Data Upload",
-    "2) Data Preprocessing",
-    "3) Model Training",
-    "4) Model Evaluation",
-    "5) Prediction",
+    "Data Upload",
+    "Data Preprocessing",
+    "Model Training",
+    "Model Evaluation",
+    "Prediction",
 ])
 st.sidebar.markdown("---")
 st.sidebar.caption("ELMo → Logistic Regression / Random Forest • Precision / Recall / F1 / ROC-AUC")
@@ -287,10 +287,10 @@ st.sidebar.markdown(
 )
 
 # ==============================
-# Page 1 — 1) Data Upload
+# Page 1 — Data Upload
 # ==============================
 def page_upload():
-    st.title("1) Data Upload")
+    st.title("Data Upload")
     f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
     if f is not None:
         name = f.name.lower()
@@ -326,13 +326,13 @@ def page_upload():
 # Page 2 — Data Preprocessing
 # ==============================
 def page_preprocess():
-    st.title("2) Data Preprocessing — Tunable Downsampling + Charts")
+    st.title("Data Preprocessing — Tunable Downsampling + Charts")
     if st.session_state.df is None:
-        st.warning("Please upload a dataset in **1) Data Upload**."); return
+        st.warning("Please upload a dataset in **Data Upload**."); return
     df = st.session_state.df.copy()
     text_col = st.session_state.text_col; label_col = st.session_state.label_col
     if text_col is None or label_col is None:
-        st.warning("Select text and label columns in **1) Data Upload**."); return
+        st.warning("Select text and label columns in **Data Upload**."); return
 
     st.subheader("Text Cleaning")
     c1, c2, c3 = st.columns(3)
@@ -424,16 +424,16 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
         "X_rf_train": X_rf_train, "y_rf_train": y_rf_train,
         "X_test_std": X_test_std
     }
-    st.success("Preprocessing complete. Proceed to **3) Model Training**.")
+    st.success("Preprocessing complete. Proceed to **Model Training**.")
 
 # ==============================
 # Page 3 — Model Training
 # ==============================
 def page_train():
-    st.title("3) Model Training")
+    st.title("Model Training")
     required = ["X_train_emb", "X_test_emb", "y_train", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in required):
-        st.warning("Please finish **2) Data Preprocessing** first."); return
+        st.warning("Please finish **Data Preprocessing** first."); return
     cache = st.session_state.prep_cache
     X_lr_train = cache["X_lr_train"]; y_lr_train = cache["y_lr_train"]
     X_rf_train = cache["X_rf_train"]; y_rf_train = cache["y_rf_train"]
@@ -458,7 +458,7 @@ def page_train():
             rf.fit(X_rf_train, y_rf_train)
 
     st.session_state.models = {"lr": lr, "rf": rf}
-    st.success("Training complete. Proceed to **4) Model Evaluation**.")
+    st.success("Training complete. Proceed to **Model Evaluation**.")
 
 # ==============================
 # Page 4 — Model Evaluation
@@ -468,10 +468,10 @@ def _safe_auc(y_true, scores):
     except Exception: return float("nan")
 
 def page_evaluation():
-    st.title("4) Model Evaluation")
+    st.title("Model Evaluation")
     req = ["models", "X_test_emb", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
-        st.warning("Train models in **3) Model Training** first."); return
+        st.warning("Train models in **Model Training** first."); return
 
     models = st.session_state.models
     scaler = st.session_state.scaler
@@ -531,7 +531,7 @@ def page_evaluation():
 # Page 5 — Prediction
 # ==============================
 def page_prediction():
-    st.title("5) Prediction")
+    st.title("Prediction")
     req = ["models", "scaler", "elmo"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
         st.warning("Please complete **Training** before predicting."); return
@@ -577,8 +577,8 @@ def page_prediction():
 # Router
 # ==============================
 st.sidebar.markdown("---")
-if page.startswith("1"):   page_upload()
-elif page.startswith("2"): page_preprocess()
-elif page.startswith("3"): page_train()
-elif page.startswith("4"): page_evaluation()
-elif page.startswith("5"): page_prediction()
+if page == "Data Upload":   page_upload()
+elif page == "Data Preprocessing": page_preprocess()
+elif page == "Model Training": page_train()
+elif page == "Model Evaluation": page_evaluation()
+elif page == "Prediction": page_prediction()
