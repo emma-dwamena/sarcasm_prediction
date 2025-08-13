@@ -1,12 +1,12 @@
-
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
+"""
 Sarcasm Detection App — ELMo + Downsampling + Logistic Regression / Random Forest
 Robust to small/degenerate class counts in splits.
 Pages: Upload → Preprocess (downsampling) → Train → Evaluate → Predict (single & batch)
 Metrics: Precision, Recall, F1, ROC-AUC
 UI: Professional dark theme; tabbed evaluation
-
+"""
 import os, io, re, json, base64
 from datetime import datetime
 
