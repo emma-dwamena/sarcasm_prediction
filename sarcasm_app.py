@@ -1,61 +1,53 @@
-#!/usr/bin/env python3
+
 # -*- coding: utf-8 -*-
-"""
-Sarcasm Detection App (Kaggle) — ELMo + Logistic Regression & Random Forest
 
-Pages:
-1) Data Loading
-2) Data Preprocessing
-3) Model Training
-4) Model Evaluation
-5) Prediction
+Sarcasm Detection App (ELMo + Logistic Regression / Random Forest)
+Imbalance handling: **Downsampling** (majority class), with adjustable majority:minority ratio.
+Pages: Upload → Preprocess → Train → Evaluate → Predict (single + batch).
+UI: Professional dark theme.
 
-How to run:
-    pip install -U streamlit pandas numpy scikit-learn matplotlib tensorflow tensorflow_hub
-    streamlit run sarcasm_streamlit_app.py
+Install (typical):
+pip install streamlit scikit-learn matplotlib pandas numpy tensorflow==2.15.0 tensorflow-hub==0.15.0
+# (ELMo is a TF1 module; TF 2.15 + tf.compat.v1 is used.)
 
-Notes:
-- ELMo (from TF-Hub) will download the model the first time you run the app (needs internet).
-- Kaggle dataset suggested: "News Headlines Dataset For Sarcasm Detection"
-  Typical file: Sarcasm_Headlines_Dataset.json (JSON Lines) with keys: headline, is_sarcastic, article_link
-"""
+Run:
+streamlit run sarcasm_downsample_app.py
 
-import io
 import os
+import io
 import re
 import json
-import time
-import math
-import typing as T
+import base64
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 
-# ML + Metrics
+# --- ML / Metrics ---
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     precision_score, recall_score, f1_score, roc_auc_score,
-    roc_curve, confusion_matrix, classification_report
+    roc_curve, confusion_matrix
 )
 
-# Plotting
-import matplotlib.pyplot as plt
-
-# TensorFlow / Hub (ELMo)
+# --- ELMo / TF Hub (TF1-style) ---
+ELMO_URL = "https://tfhub.dev/google/elmo/3"
+TF_OK = True
 try:
     import tensorflow as tf
     import tensorflow_hub as hub
-except Exception as e:
-    tf = None
-    hub = None
-
+    tf.get_logger().setLevel("ERROR")
+    # We'll use TF1-compat mode because ELMo is a TF1 module.
+    tf.compat.v1.disable_eager_execution()
+except Exception as _e:
+    TF_OK = False
 
 # ----------------------------
-# App Config
+# Streamlit Page Config & Theme
 # ----------------------------
 st.set_page_config(
     page_title="Sarcasm Detection (ELMo + LR/RF)",
@@ -63,370 +55,431 @@ st.set_page_config(
     page_icon="📰"
 )
 
-PAGES = [
-    "1) Data Loading",
-    "2) Data Preprocessing",
-    "3) Model Training",
-    "4) Model Evaluation",
-    "5) Prediction",
-]
-
-ELMO_URL_DEFAULT = "https://tfhub.dev/google/elmo/3"  # Sentence-level embedding (1024-d)
+# Dark professional theme via CSS
+st.markdown(
+    """
+    <style>
+    :root{
+      --bg:#0b0f19;           /* app background */
+      --panel:#121826;        /* panels/cards */
+      --border:#1f2937;       /* subtle borders */
+      --text:#e5e7eb;         /* primary text */
+      --muted:#9ca3af;        /* secondary text */
+      --accent:#60a5fa;       /* links / accents */
+      --good:#10b981;         /* success */
+      --warn:#f59e0b;         /* warning */
+      --bad:#ef4444;          /* danger */
+    }
+    html, body, [data-testid="stAppViewContainer"]{ background:var(--bg); color:var(--text); }
+    section[data-testid="stSidebar"]{ background:linear-gradient(180deg,#0b0f19 0%, #0f172a 100%); }
+    section[data-testid="stSidebar"] *{ color:#e5e7eb !important; }
+    a { color: var(--accent) !important; }
+    .card{ background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,.15); }
+    .stButton>button{ background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.6rem 1rem; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+    .stButton>button:hover{ border-color:#334155; }
+    .stTextInput input, .stTextArea textarea, .stNumberInput input, .stSelectbox div[data-baseweb="select"] {
+      background: var(--panel) !important; color: var(--text) !important; border:1px solid var(--border) !important;
+    }
+    div[data-testid="stDataFrame"] { background: var(--panel); border:1px solid var(--border); border-radius:12px; padding:8px; }
+    div[data-testid="stMetricValue"]{ color:var(--text); } div[data-testid="stMetricLabel"]{ color:var(--muted); }
+    div[data-testid="stTabs"] > div[role="tablist"]{ position:sticky; top:0; z-index:10; background:var(--panel); border-bottom:1px solid var(--border); }
+    h1, h2, h3, h4, h5, h6 { color: var(--text); }
+    .pill { display:inline-block; padding:.2rem .5rem; border-radius:9999px; border:1px solid var(--border); background:#0d1324; color:#cbd5e1; }
+    .ok { color: var(--good); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # ----------------------------
-# Helpers
+# Helpers: Session State
 # ----------------------------
+def _init_state():
+    ss = st.session_state
+    ss.setdefault("df", None)
+    ss.setdefault("text_col", None)
+    ss.setdefault("label_col", None)
+    ss.setdefault("clean_lower", True)
+    ss.setdefault("clean_punct", True)
+    ss.setdefault("dedupe", True)
+    ss.setdefault("test_size", 0.2)
+    ss.setdefault("random_state", 42)
+    ss.setdefault("down_maj_mult", 1.0)   # majority:minority target after downsample (>=1.0)
+    ss.setdefault("elmo", None)           # ELMo embedder (initialized once)
+    ss.setdefault("X_train_emb", None)
+    ss.setdefault("X_test_emb", None)
+    ss.setdefault("y_train", None)
+    ss.setdefault("y_test", None)
+    ss.setdefault("scaler", None)
+    ss.setdefault("models", {})           # {"lr": model, "rf": model}
+    ss.setdefault("threshold", 0.5)
+    ss.setdefault("train_done", False)
+    ss.setdefault("prep_cache", None)
 
-def ensure_tfhub_available():
-    if tf is None or hub is None:
-        st.error("TensorFlow and/or TensorFlow Hub are not available. "
-                 "Please install them:\n\n"
-                 "`pip install tensorflow tensorflow_hub`")
-        st.stop()
+_init_state()
 
-
-@st.cache_resource(show_spinner=False)
-def load_elmo_layer(elmo_url: str):
-    """Load ELMo KerasLayer from TF-Hub (cached)."""
-    ensure_tfhub_available()
-    with st.spinner("Loading ELMo from TensorFlow Hub... (first time may take a minute)"):
-        # KerasLayer returns shape [batch, 1024] for string inputs
-        layer = hub.KerasLayer(elmo_url, input_shape=[], dtype=tf.string, trainable=False)
-    return layer
-
-
-def clean_text(text: str) -> str:
-    """Basic text cleanup; ELMo doesn't require heavy preprocessing, keep it light."""
+# ----------------------------
+# Text Cleaning
+# ----------------------------
+_punct_pattern = re.compile(r"[^\w\s]")
+def basic_clean(text, lower=True, remove_punct=True):
     if not isinstance(text, str):
-        text = str(text)
-    text = text.strip()
-    # normalize whitespace
-    text = re.sub(r"\s+", " ", text)
-    # optional mild normalization (URLs -> token, lowercasing)
-    text = text.lower()
-    text = re.sub(r"http\S+|www\.\S+", " <url> ", text)
-    return text
-
-
-def batch_iter(lst: T.List[str], batch_size: int) -> T.Iterator[T.List[str]]:
-    for i in range(0, len(lst), batch_size):
-        yield lst[i:i + batch_size]
-
-
-def elmo_embed_texts(texts: T.List[str], elmo_layer, batch_size: int = 64) -> np.ndarray:
-    """Compute sentence-level ELMo embeddings in batches. Returns [N, 1024]."""
-    ensure_tfhub_available()
-    all_vecs: T.List[np.ndarray] = []
-    total = len(texts)
-    prog = st.progress(0.0, text="Embedding with ELMo...")
-    done = 0
-    for chunk in batch_iter(texts, batch_size):
-        # KerasLayer accepts tf.string tensors
-        emb = elmo_layer(tf.constant(chunk))
-        # emb shape: [batch, 1024]
-        vecs = emb.numpy()
-        all_vecs.append(vecs)
-        done += len(chunk)
-        prog.progress(min(1.0, done / total), text=f"Embedding with ELMo... ({done}/{total})")
-    prog.empty()
-    return np.vstack(all_vecs) if all_vecs else np.zeros((0, 1024), dtype=np.float32)
-
-
-def safe_get(df: pd.DataFrame, keys: T.List[str]) -> str:
-    for k in keys:
-        if k in df.columns:
-            return k
-    return None
-
-
-def set_state(**kwargs):
-    for k, v in kwargs.items():
-        st.session_state[k] = v
-
-
-def get_state(k, default=None):
-    return st.session_state.get(k, default)
-
-
-def state_has(keys: T.List[str]) -> bool:
-    return all(k in st.session_state for k in keys)
-
-
-def metric_table(metrics_dict: dict) -> pd.DataFrame:
-    df = pd.DataFrame(metrics_dict).T
-    df = df[["Precision", "Recall", "F1", "ROC-AUC"]]
-    return df
-
+        return ""
+    t = text.strip()
+    if lower:
+        t = t.lower()
+    if remove_punct:
+        t = _punct_pattern.sub(" ", t)
+    t = re.sub(r"\s+", " ", t)
+    return t
 
 # ----------------------------
-# Sidebar
+# ELMo Embedder (TF1 hub.Module)
 # ----------------------------
-with st.sidebar:
-    st.title("📰 Sarcasm Detection")
-    st.caption("ELMo embeddings + Logistic Regression & Random Forest")
+class ELMoEmbedder:
+    def __init__(self, url: str = ELMO_URL):
+        if not TF_OK:
+            raise RuntimeError("TensorFlow / TF-Hub not available. Please install tensorflow<=2.15 and tensorflow-hub.")
+        self.graph = tf.Graph()
+        with self.graph.as_default():
+            self.text_input = tf.compat.v1.placeholder(tf.string, shape=[None], name="text_input")
+            self.module = hub.Module(url, trainable=False, name="elmo_module")
+            # 'elmo' output (token-level, 1024); average across time to get sentence embedding.
+            elmo_out = self.module(self.text_input, signature="default", as_dict=True)["elmo"]
+            self.sentence_emb = tf.reduce_mean(elmo_out, axis=1, name="sentence_embedding")
+            self.init_op = tf.group([tf.compat.v1.global_variables_initializer(), tf.compat.v1.tables_initializer()])
+        self.sess = tf.compat.v1.Session(graph=self.graph)
+        self.sess.run(self.init_op)
 
-    page = st.radio("Navigate", PAGES, index=0)
+    def embed(self, texts, batch_size=32):
+        # Returns numpy array [n_samples, 1024]
+        if isinstance(texts, (pd.Series, list, tuple)):
+            texts = list(texts)
+        elif isinstance(texts, np.ndarray):
+            texts = texts.tolist()
+        else:
+            texts = [str(texts)]
+        mats = []
+        for i in range(0, len(texts), batch_size):
+            batch = [str(t) if t is not None else "" for t in texts[i:i+batch_size]]
+            vecs = self.sess.run(self.sentence_emb, feed_dict={self.text_input: batch})
+            mats.append(vecs)
+        return np.vstack(mats)
 
-    st.divider()
-    st.subheader("Run Settings")
-    elmo_url = st.text_input("TensorFlow Hub ELMo URL", value=get_state("elmo_url", ELMO_URL_DEFAULT))
-    set_state(elmo_url=elmo_url)
+# ----------------------------
+# Downsampling helper (without imblearn dependency)
+# ----------------------------
+def random_downsample(X, y, maj_mult=1.0, random_state=42):
+    """Randomly downsample the majority class to achieve a majority:minority ratio of `maj_mult`.
+    X: np.ndarray [n, d]; y: np.ndarray [n]; binary labels {0,1}.
+    Returns: X_ds, y_ds
+    """
+    rng = np.random.RandomState(random_state)
+    y = np.asarray(y).astype(int)
+    idx0 = np.where(y == 0)[0]
+    idx1 = np.where(y == 1)[0]
+    n0, n1 = len(idx0), len(idx1)
+    if n0 == 0 or n1 == 0:
+        # Degenerate, no downsampling
+        return X, y
 
-    if "models" in st.session_state:
-        st.success("Models trained ✅")
+    # Identify majority/minority
+    if n0 >= n1:
+        maj_label, maj_idx, min_label, min_idx = 0, idx0, 1, idx1
+        nmaj, nmin = n0, n1
     else:
-        st.info("Models not trained yet")
+        maj_label, maj_idx, min_label, min_idx = 1, idx1, 0, idx0
+        nmaj, nmin = n1, n0
 
-    if "data" in st.session_state:
-        st.success("Data loaded ✅")
+    desired_maj = int(max(nmin, np.floor(nmin * maj_mult)))  # ensure >= nmin
+    desired_maj = min(desired_maj, nmaj)  # don't overshoot
+
+    if nmaj > desired_maj:
+        keep_maj = rng.choice(maj_idx, size=desired_maj, replace=False)
     else:
-        st.info("Data not loaded")
+        keep_maj = maj_idx
 
+    keep_idx = np.concatenate([min_idx, keep_maj])
+    rng.shuffle(keep_idx)
+    return X[keep_idx], y[keep_idx]
 
 # ----------------------------
-# Page 1 — Data Loading
+# Sidebar Navigation
 # ----------------------------
-def page_data_loading():
-    st.header("1) Data Loading")
-    st.write("Upload the Kaggle sarcasm dataset file (JSON Lines or CSV). "
-             "For the Kaggle **News Headlines Dataset For Sarcasm Detection**, the JSON lines file typically "
-             "contains fields: `headline`, `is_sarcastic`, optionally `article_link`.")
+st.sidebar.title("📰 Sarcasm Detector (Downsampling)")
+page = st.sidebar.radio(
+    "Navigate",
+    [
+        "1) Data Upload",
+        "2) Data Preprocessing",
+        "3) Model Training",
+        "4) Model Evaluation",
+        "5) Prediction"
+    ]
+)
 
-    uploaded = st.file_uploader("Upload JSONL (.json) or CSV file", type=["json", "csv"], accept_multiple_files=False)
+st.sidebar.markdown("---")
+st.sidebar.caption("ELMo → Logistic Regression / Random Forest • Precision / Recall / F1 / ROC-AUC")
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        sample_n = st.number_input("Optional: randomly sample N rows (0 = keep all)", min_value=0, value=0, step=100)
+# ----------------------------
+# Page 1 — Data Upload
+# ----------------------------
+def page_upload():
+    st.title("1) Data Upload")
+    st.markdown("Upload the Kaggle **Sarcasm** dataset. Supports **CSV** and **JSON** (array or JSON lines).")
+    f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
 
-    with col2:
-        seed = st.number_input("Random seed", min_value=0, value=42, step=1)
-
-    if uploaded is not None:
-        ext = os.path.splitext(uploaded.name)[-1].lower()
+    if f is not None:
+        name = f.name.lower()
         try:
-            if ext == ".json":
-                df = pd.read_json(uploaded, lines=True)
-            elif ext == ".csv":
-                df = pd.read_csv(uploaded)
+            if name.endswith(".csv"):
+                df = pd.read_csv(f)
+            elif name.endswith(".jsonl") or name.endswith(".txt"):
+                df = pd.read_json(f, lines=True)
+            elif name.endswith(".json"):
+                content = f.read()
+                try:
+                    data = json.loads(content)
+                    df = pd.DataFrame(data)
+                except Exception:
+                    df = pd.read_json(io.BytesIO(content), lines=True)
             else:
-                st.error("Unsupported file type. Please upload .json or .csv")
+                st.error("Unsupported file type.")
                 return
         except Exception as e:
             st.error(f"Failed to read file: {e}")
             return
 
-        # Identify columns
-        text_col = safe_get(df, ["headline", "text", "content", "review", "comment"])
-        label_col = safe_get(df, ["is_sarcastic", "label", "target", "sarcastic"])
+        st.session_state.df = df.copy()
+        st.success(f"Loaded shape: {df.shape[0]} rows × {df.shape[1]} columns")
 
-        if text_col is None or label_col is None:
-            st.warning("Could not auto-detect text/label columns. Please select them below.")
-            cols = st.columns(2)
-            with cols[0]:
-                text_col = st.selectbox("Text column", df.columns.tolist())
-            with cols[1]:
-                label_col = st.selectbox("Label column (0/1)", df.columns.tolist())
-        else:
-            st.success(f"Detected text column: **{text_col}**, label column: **{label_col}**")
+        with st.expander("Preview (first 10 rows)", expanded=True):
+            st.dataframe(df.head(10), use_container_width=True)
 
-        # Optionally sample
-        if sample_n and sample_n > 0 and sample_n < len(df):
-            df = df.sample(n=sample_n, random_state=int(seed)).reset_index(drop=True)
+        # Column mapping
+        cols = list(df.columns)
+        st.subheader("Select Columns")
+        default_text = "headline" if "headline" in cols else cols[0]
+        default_label = "is_sarcastic" if "is_sarcastic" in cols else cols[-1]
+        st.session_state.text_col = st.selectbox("Text column", cols, index=cols.index(default_text) if default_text in cols else 0, key="text_col_select")
+        st.session_state.label_col = st.selectbox("Label column (0/1)", cols, index=cols.index(default_label) if default_label in cols else len(cols)-1, key="label_col_select")
 
-        # Ensure binary labels
-        try:
-            labels = df[label_col].astype(int)
-        except Exception:
-            # Try mapping truthy strings to 1/0
-            labels = df[label_col].astype(str).str.lower().map(
-                {"1": 1, "true": 1, "yes": 1, "y": 1, "t": 1,
-                 "0": 0, "false": 0, "no": 0, "n": 0, "f": 0}
-            ).fillna(0).astype(int)
-
-        df_clean = pd.DataFrame({
-            "text": df[text_col].astype(str),
-            "label": labels
-        })
-
-        st.write("Preview:")
-        st.dataframe(df_clean.head(20))
-
-        st.info(f"Rows: {len(df_clean)}, Positives (1): {int((df_clean['label']==1).sum())}, "
-                f"Negatives (0): {int((df_clean['label']==0).sum())}")
-
-        if st.button("Save dataset to session", type="primary"):
-            set_state(data=df_clean)
-            st.success("Dataset saved. Proceed to **2) Data Preprocessing** from the sidebar.")
-    else:
-        st.info("Awaiting file upload...")
-
+        st.info("Tip: Kaggle 'News Headlines' uses **headline** for text and **is_sarcastic** (0/1) for labels.")
 
 # ----------------------------
-# Page 2 — Data Preprocessing
+# Page 2 — Data Preprocessing (with Downsampling)
 # ----------------------------
-def page_preprocessing():
-    st.header("2) Data Preprocessing")
-    if "data" not in st.session_state:
-        st.warning("Please load data first in **1) Data Loading**.")
+def page_preprocess():
+    st.title("2) Data Preprocessing — with Downsampling")
+
+    if st.session_state.df is None:
+        st.warning("Please upload a dataset in **1) Data Upload**.")
         return
 
-    df: pd.DataFrame = st.session_state["data"].copy()
+    df = st.session_state.df.copy()
+    text_col = st.session_state.text_col
+    label_col = st.session_state.label_col
 
-    st.subheader("Cleaning")
-    st.write("Minimal cleaning is applied (lowercasing, URL masking). ELMo is robust to raw text, "
-             "so heavy tokenization is not required.")
-    apply_clean = st.checkbox("Apply basic cleaning", value=True)
+    if text_col is None or label_col is None:
+        st.warning("Select text and label columns in **1) Data Upload**.")
+        return
 
-    if apply_clean:
-        df["text"] = df["text"].astype(str).map(clean_text)
+    # Cleaning options
+    st.subheader("Text Cleaning")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.session_state.clean_lower = st.checkbox("lowercase", value=st.session_state.clean_lower)
+    with c2:
+        st.session_state.clean_punct = st.checkbox("remove punctuation", value=st.session_state.clean_punct)
+    with c3:
+        st.session_state.dedupe = st.checkbox("drop duplicate texts", value=st.session_state.dedupe)
 
-    st.subheader("Train / Test Split")
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col1:
-        test_size = st.slider("Test size", min_value=0.1, max_value=0.4, value=0.2, step=0.05)
-    with col2:
-        stratify = st.checkbox("Stratify by label", value=True)
-    with col3:
-        random_state = st.number_input("Random seed", min_value=0, value=42, step=1)
+    df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
+    df["__label__"] = pd.to_numeric(df[label_col], errors="coerce").fillna(0).astype(int)
 
-    X = df["text"].tolist()
-    y = df["label"].astype(int).to_numpy()
+    if st.session_state.dedupe:
+        df = df.drop_duplicates(subset="__text__")
 
-    if st.button("Create Split", type="primary"):
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=int(random_state),
-            stratify=y if stratify else None
-        )
-        set_state(X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test)
-        st.success(f"Split created. Train: {len(X_train)}, Test: {len(X_test)}. "
-                   f"Proceed to **3) Model Training**.")
+    st.markdown(f'<div class="pill">Rows after cleaning: {len(df):,}</div>', unsafe_allow_html=True)
 
+    with st.expander("Class balance", expanded=True):
+        vc = df["__label__"].value_counts().sort_index()
+        n0 = int(vc.get(0, 0)); n1 = int(vc.get(1, 0)); N = n0 + n1 if (n0+n1)>0 else 1
+        st.write(pd.DataFrame({
+            "class": ["Not Sarcastic (0)", "Sarcastic (1)"],
+            "count": [n0, n1],
+            "percent": [round(100*n0/N, 2), round(100*n1/N, 2)]
+        }))
 
-    # Show distribution
-    if "X_train" in st.session_state:
-        c1, c2 = st.columns(2)
-        with c1:
-            st.write("Train label distribution")
-            train_labels = pd.Series(st.session_state["y_train"]).value_counts().rename({0:"Not Sarcastic",1:"Sarcastic"})
-            st.bar_chart(train_labels)
-        with c2:
-            st.write("Test label distribution")
-            test_labels = pd.Series(st.session_state["y_test"]).value_counts().rename({0:"Not Sarcastic",1:"Sarcastic"})
-            st.bar_chart(test_labels)
+    st.subheader("Train/Test Split")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.session_state.test_size = st.slider("Test size fraction", 0.1, 0.4, float(st.session_state.test_size), 0.05)
+    with c2:
+        st.session_state.random_state = st.number_input("Random state", 0, 10_000, int(st.session_state.random_state), step=1)
 
+    # Downsampling config
+    st.subheader("Imbalance Handling — Downsampling")
+    st.caption("Reduce the majority class in the **training set** only. Choose target majority:minority ratio (≥ 1.0). Example: 1.0 → 50/50; 1.5 → majority is 1.5× minority.")
+    st.session_state.down_maj_mult = st.slider("Target majority:minority ratio after downsampling", 1.0, 3.0, float(st.session_state.down_maj_mult), 0.1)
+
+    # Split
+    X = df["__text__"].values
+    y = df["__label__"].values
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=st.session_state.test_size, random_state=st.session_state.random_state, stratify=y
+    )
+
+    # ELMo init (once)
+    st.subheader("ELMo Embeddings")
+    if st.session_state.elmo is None:
+        if not TF_OK:
+            st.error("TensorFlow / tensorflow-hub not available. Please install:
+
+`pip install tensorflow==2.15.0 tensorflow-hub==0.15.0`")
+            return
+        with st.spinner("Loading ELMo module from TF Hub… (first run may take a while)"):
+            try:
+                st.session_state.elmo = ELMoEmbedder(ELMO_URL)
+            except Exception as e:
+                st.error(f"Failed to load ELMo: {e}")
+                return
+        st.success("ELMo loaded.")
+
+    # Embed train/test
+    bsz = 32
+    with st.spinner("Embedding training texts with ELMo…"):
+        X_train_emb = st.session_state.elmo.embed(X_train, batch_size=bsz)
+    with st.spinner("Embedding test texts with ELMo…"):
+        X_test_emb = st.session_state.elmo.embed(X_test, batch_size=bsz)
+
+    # Scale for LR; RF can take raw embeddings
+    scaler = StandardScaler()
+    X_train_std = scaler.fit_transform(X_train_emb)
+    X_test_std = scaler.transform(X_test_emb)
+
+    # Downsample (train only), both views (std for LR, raw for RF)
+    maj_mult = float(st.session_state.down_maj_mult)
+    X_lr_train, y_lr_train = random_downsample(X_train_std, y_train, maj_mult=maj_mult, random_state=st.session_state.random_state)
+    X_rf_train, y_rf_train = random_downsample(X_train_emb, y_train, maj_mult=maj_mult, random_state=st.session_state.random_state)
+
+    # Report class counts after downsampling
+    def _counts(yv):
+        v = pd.Series(yv).value_counts().sort_index()
+        return int(v.get(0,0)), int(v.get(1,0))
+
+    n0_before = int((y_train==0).sum()); n1_before = int((y_train==1).sum())
+    n0_lr_after, n1_lr_after = _counts(y_lr_train)
+    n0_rf_after, n1_rf_after = _counts(y_rf_train)
+
+    with st.expander("Train set class counts (before → after downsampling)", expanded=True):
+        st.write(pd.DataFrame({
+            "view": ["LR (scaled)", "RF (raw)"],
+            "0_before": [n0_before, n0_before],
+            "1_before": [n1_before, n1_before],
+            "0_after": [n0_lr_after, n0_rf_after],
+            "1_after": [n1_lr_after, n1_rf_after],
+        }))
+
+    # Save to state
+    st.session_state.X_train_emb = X_train_emb
+    st.session_state.X_test_emb = X_test_emb
+    st.session_state.y_train = y_train
+    st.session_state.y_test = y_test
+    st.session_state.scaler = scaler
+    st.session_state.prep_cache = {
+        "X_lr_train": X_lr_train, "y_lr_train": y_lr_train,
+        "X_rf_train": X_rf_train, "y_rf_train": y_rf_train,
+        "X_test_std": X_test_std
+    }
+
+    st.success("Preprocessing complete. Proceed to **3) Model Training**.")
 
 # ----------------------------
 # Page 3 — Model Training
 # ----------------------------
-def page_training():
-    st.header("3) Model Training")
-    required_keys = ["X_train", "X_test", "y_train", "y_test"]
-    if not state_has(required_keys):
+def page_train():
+    st.title("3) Model Training")
+    required = ["X_train_emb", "X_test_emb", "y_train", "y_test", "scaler", "prep_cache"]
+    if not all(k in st.session_state and st.session_state[k] is not None for k in required):
         st.warning("Please finish **2) Data Preprocessing** first.")
         return
 
-    X_train: T.List[str] = get_state("X_train")
-    X_test: T.List[str] = get_state("X_test")
-    y_train: np.ndarray = get_state("y_train")
-    y_test: np.ndarray = get_state("y_test")
+    cache = st.session_state.prep_cache
+    X_lr_train = cache["X_lr_train"]
+    y_lr_train = cache["y_lr_train"]
+    X_rf_train = cache["X_rf_train"]
+    y_rf_train = cache["y_rf_train"]
 
-    st.subheader("ELMo Embedding")
-    col1, col2 = st.columns(2)
-    with col1:
-        batch_size = st.number_input("Embedding batch size", min_value=8, max_value=512, value=64, step=8)
-    with col2:
-        use_cache_embeddings = st.checkbox("Cache embeddings in session", value=True)
-
-    # Load ELMo Layer
-    try:
-        elmo_layer = load_elmo_layer(get_state("elmo_url", ELMO_URL_DEFAULT))
-    except Exception as e:
-        st.error(f"Failed to load ELMo from TF-Hub: {e}")
-        return
-
-    # Compute embeddings
-    if use_cache_embeddings and "X_train_emb" in st.session_state and "X_test_emb" in st.session_state:
-        X_train_emb = st.session_state["X_train_emb"]
-        X_test_emb = st.session_state["X_test_emb"]
-        st.info("Using cached embeddings.")
-    else:
-        X_train_emb = elmo_embed_texts(X_train, elmo_layer, batch_size=batch_size)
-        X_test_emb = elmo_embed_texts(X_test, elmo_layer, batch_size=batch_size)
-        if use_cache_embeddings:
-            set_state(X_train_emb=X_train_emb, X_test_emb=X_test_emb)
-
-    st.write("Train embeddings shape:", X_train_emb.shape, "Test embeddings shape:", X_test_emb.shape)
-
-    st.subheader("Model Hyperparameters")
-    c1, c2 = st.columns(2)
+    st.subheader("Hyperparameters")
+    c1, c2, c3 = st.columns(3)
     with c1:
-        st.markdown("**Logistic Regression**")
-        lr_c = st.number_input("C (inverse regularization strength)", min_value=0.001, max_value=100.0, value=1.0, step=0.1)
-        lr_max_iter = st.number_input("max_iter", min_value=100, max_value=5000, value=1000, step=100)
-        lr_penalty = st.selectbox("penalty", ["l2"], index=0)
-        lr_solver = st.selectbox("solver", ["lbfgs", "liblinear", "saga"], index=0)
+        C = st.number_input("LogReg C (inverse regularization strength)", 0.01, 100.0, 1.0, step=0.05)
     with c2:
-        st.markdown("**Random Forest**")
-        rf_n_estimators = st.number_input("n_estimators", min_value=50, max_value=1000, value=300, step=50)
-        rf_max_depth = st.number_input("max_depth (0 means None)", min_value=0, max_value=200, value=0, step=1)
-        rf_min_samples_leaf = st.number_input("min_samples_leaf", min_value=1, max_value=20, value=1, step=1)
-        rf_random_state = st.number_input("random_state", min_value=0, value=42, step=1)
+        n_estimators = st.number_input("RandomForest n_estimators", 50, 1000, 300, step=50)
+    with c3:
+        max_depth = st.number_input("RandomForest max_depth (0 = None)", 0, 100, 0, step=1)
+        max_depth = None if max_depth == 0 else int(max_depth)
 
-    if st.button("Train Both Models", type="primary"):
-        # Standardize for LR (helps optimization). Not necessary for RF, but harmless.
-        scaler = StandardScaler()
-        X_train_std = scaler.fit_transform(X_train_emb)
-        X_test_std = scaler.transform(X_test_emb)
+    st.subheader("Train Models")
+    colA, colB = st.columns(2)
 
-        lr = LogisticRegression(
-            C=float(lr_c), penalty=lr_penalty, solver=lr_solver,
-            max_iter=int(lr_max_iter), n_jobs=None
-        )
-        lr.fit(X_train_std, y_train)
+    with colA:
+        with st.spinner("Training Logistic Regression…"):
+            lr = LogisticRegression(
+                C=C, solver="liblinear", random_state=st.session_state.random_state
+            )
+            lr.fit(X_lr_train, y_lr_train)
 
-        rf = RandomForestClassifier(
-            n_estimators=int(rf_n_estimators),
-            max_depth=None if rf_max_depth == 0 else int(rf_max_depth),
-            min_samples_leaf=int(rf_min_samples_leaf),
-            random_state=int(rf_random_state),
-            n_jobs=-1
-        )
-        rf.fit(X_train_emb, y_train)  # RF on unscaled features
+    with colB:
+        with st.spinner("Training Random Forest…"):
+            rf = RandomForestClassifier(
+                n_estimators=int(n_estimators), max_depth=max_depth,
+                random_state=st.session_state.random_state, n_jobs=-1
+            )
+            rf.fit(X_rf_train, y_rf_train)
 
-        artifacts = {
-            "scaler": scaler,
-            "lr": lr,
-            "rf": rf,
-        }
-        set_state(models=artifacts)
-        st.success("Training complete. Go to **4) Model Evaluation**.")
+    st.session_state.models = {"lr": lr, "rf": rf}
+    st.session_state.train_done = True
+    st.success("Training complete. Proceed to **4) Model Evaluation**.")
 
+# ----------------------------
+# Metrics utilities
+# ----------------------------
+def metric_table(metrics_dict):
+    rows = []
+    for model_name, m in metrics_dict.items():
+        rows.append([model_name, m["Precision"], m["Recall"], m["F1"], m["ROC-AUC"]])
+    return pd.DataFrame(rows, columns=["Model", "Precision", "Recall", "F1", "ROC-AUC"])
 
 # ----------------------------
 # Page 4 — Model Evaluation
 # ----------------------------
 def page_evaluation():
-    st.header("4) Model Evaluation")
-    required = ["models", "X_test_emb", "y_test", "X_test"]
-    if not state_has(required):
-        st.warning("Please train models in **3) Model Training** first.")
+    st.title("4) Model Evaluation")
+    req = ["models", "X_test_emb", "y_test", "scaler", "prep_cache"]
+    if not all(k in st.session_state and st.session_state[k] is not None for k in req):
+        st.warning("Train models in **3) Model Training** first.")
         return
 
-    models = get_state("models")
-    scaler: StandardScaler = models["scaler"]
-    lr: LogisticRegression = models["lr"]
-    rf: RandomForestClassifier = models["rf"]
+    models = st.session_state.models
+    scaler = st.session_state.scaler
+    X_test_emb = st.session_state.X_test_emb
+    y_test = st.session_state.y_test
+    X_test_std = st.session_state.prep_cache["X_test_std"]
 
-    X_test_emb: np.ndarray = get_state("X_test_emb")
-    y_test: np.ndarray = get_state("y_test")
+    lr = models["lr"]
+    rf = models["rf"]
 
     # Predict probabilities
-    X_test_std = scaler.transform(X_test_emb)
     lr_proba = lr.predict_proba(X_test_std)[:, 1]
     rf_proba = rf.predict_proba(X_test_emb)[:, 1]
 
-    # Class labels
-    thresh = st.slider("Decision threshold (for Precision/Recall/F1)", 0.1, 0.9, 0.5, 0.05)
+    # Threshold control
+    st.session_state.threshold = st.slider("Decision threshold (affects Precision/Recall/F1)", 0.1, 0.9, float(st.session_state.threshold), 0.05)
+    thresh = st.session_state.threshold
     lr_pred = (lr_proba >= thresh).astype(int)
     rf_pred = (rf_proba >= thresh).astype(int)
 
@@ -446,112 +499,135 @@ def page_evaluation():
         }
     }
 
-    st.subheader("Performance Comparison")
-    dfm = metric_table(metrics).round(4)
-    st.dataframe(dfm, use_container_width=True)
+    tab_perf, tab_cm, tab_roc = st.tabs(["Performance", "Confusion Matrices", "ROC Curves"])
 
-    # Confusion matrices
-    c1, c2 = st.columns(2)
-    with c1:
-        st.write("Confusion Matrix — Logistic Regression")
-        cm_lr = confusion_matrix(y_test, lr_pred)
-        st.write(pd.DataFrame(cm_lr, index=["Actual 0", "Actual 1"], columns=["Pred 0", "Pred 1"]))
-    with c2:
-        st.write("Confusion Matrix — Random Forest")
-        cm_rf = confusion_matrix(y_test, rf_pred)
-        st.write(pd.DataFrame(cm_rf, index=["Actual 0", "Actual 1"], columns=["Pred 0", "Pred 1"]))
+    with tab_perf:
+        st.subheader("Performance Comparison")
+        dfm = metric_table(metrics).round(4)
+        st.dataframe(dfm, use_container_width=True)
+        better = "Logistic Regression" if dfm.set_index("Model").loc["Logistic Regression", "F1"] >= dfm.set_index("Model").loc["Random Forest", "F1"] else "Random Forest"
+        st.markdown(f"**Better F1 (at threshold={thresh:.2f}):** `{better}`")
 
-    # ROC Curves
-    fpr_lr, tpr_lr, _ = roc_curve(y_test, lr_proba)
-    fpr_rf, tpr_rf, _ = roc_curve(y_test, rf_proba)
+    with tab_cm:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.write("Confusion Matrix — Logistic Regression")
+            cm_lr = confusion_matrix(y_test, lr_pred)
+            st.write(pd.DataFrame(cm_lr, index=["Actual 0", "Actual 1"], columns=["Pred 0", "Pred 1"]))
+        with c2:
+            st.write("Confusion Matrix — Random Forest")
+            cm_rf = confusion_matrix(y_test, rf_pred)
+            st.write(pd.DataFrame(cm_rf, index=["Actual 0", "Actual 1"], columns=["Pred 0", "Pred 1"]))
 
-    fig = plt.figure(figsize=(6, 5))
-    plt.plot(fpr_lr, tpr_lr, label=f"LogReg (AUC={metrics['Logistic Regression']['ROC-AUC']:.3f})")
-    plt.plot(fpr_rf, tpr_rf, label=f"RandForest (AUC={metrics['Random Forest']['ROC-AUC']:.3f})")
-    plt.plot([0, 1], [0, 1], linestyle="--")
-    plt.xlabel("False Positive Rate")
-    plt.ylabel("True Positive Rate")
-    plt.title("ROC Curves")
-    plt.legend(loc="lower right")
-    st.pyplot(fig)
+    with tab_roc:
+        import matplotlib.pyplot as plt
+        fpr_lr, tpr_lr, _ = roc_curve(y_test, lr_proba)
+        fpr_rf, tpr_rf, _ = roc_curve(y_test, rf_proba)
 
-    st.caption("Metrics computed on the held-out test split. "
-               "Precision/Recall/F1 depend on the selected decision threshold; ROC-AUC uses score distributions.")
-
+        fig = plt.figure(figsize=(6, 5))
+        plt.plot(fpr_lr, tpr_lr, label=f"LogReg (AUC={metrics['Logistic Regression']['ROC-AUC']:.3f})")
+        plt.plot(fpr_rf, tpr_rf, label=f"RandForest (AUC={metrics['Random Forest']['ROC-AUC']:.3f})")
+        plt.plot([0, 1], [0, 1], linestyle="--")
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.title("ROC Curves")
+        plt.legend(loc="lower right")
+        st.pyplot(fig)
 
 # ----------------------------
 # Page 5 — Prediction
 # ----------------------------
 def page_prediction():
-    st.header("5) Prediction")
-    required = ["models", "X_train_emb"]
-    if not state_has(required):
-        st.warning("Please train models in **3) Model Training** first.")
+    st.title("5) Prediction")
+
+    req = ["models", "scaler", "elmo"]
+    if not all(k in st.session_state and st.session_state[k] is not None for k in req):
+        st.warning("Please complete **Training** before predicting.")
         return
 
-    models = get_state("models")
-    scaler: StandardScaler = models["scaler"]
-    lr: LogisticRegression = models["lr"]
-    rf: RandomForestClassifier = models["rf"]
+    models = st.session_state.models
+    scaler = st.session_state.scaler
+    elmo = st.session_state.elmo
+    threshold = st.session_state.get("threshold", 0.5)
 
-    # Load ELMo
-    try:
-        elmo_layer = load_elmo_layer(get_state("elmo_url", ELMO_URL_DEFAULT))
-    except Exception as e:
-        st.error(f"Failed to load ELMo: {e}")
-        return
+    tab_single, tab_batch = st.tabs(["Single Text", "Batch Upload"])
 
-    st.write("Enter a headline (or multiple, one per line):")
-    user_text = st.text_area("Input", height=150, placeholder="example: the weather today is great...")
+    with tab_single:
+        text = st.text_area("Enter headline / text", height=120, placeholder="e.g., 'Local man wins lottery, quits job to pursue full-time napping career'")
+        if st.button("Predict"):
+            if not text.strip():
+                st.warning("Enter some text.")
+            else:
+                emb = elmo.embed([text])
+                x_std = scaler.transform(emb)
+                lr_proba = models["lr"].predict_proba(x_std)[:, 1][0]
+                rf_proba = models["rf"].predict_proba(emb)[:, 1][0]
+                lr_pred = int(lr_proba >= threshold)
+                rf_pred = int(rf_proba >= threshold)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        threshold = st.slider("Decision threshold", 0.1, 0.9, 0.5, 0.05)
-    with col2:
-        apply_clean = st.checkbox("Apply same basic cleaning", value=True)
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.metric("Logistic Regression", f"{'Sarcastic' if lr_pred else 'Not Sarcastic'}", delta=f"P={lr_proba:.3f}")
+                with c2:
+                    st.metric("Random Forest", f"{'Sarcastic' if rf_pred else 'Not Sarcastic'}", delta=f"P={rf_proba:.3f}")
 
-    if st.button("Predict", type="primary"):
-        sentences = [s.strip() for s in user_text.split("\n") if s.strip()]
-        if not sentences:
-            st.warning("Please enter at least one line of text.")
-            return
+    with tab_batch:
+        st.write("Upload a CSV for batch predictions.")
+        bf = st.file_uploader("Upload CSV", type=["csv"], key="batch_csv")
+        text_col_name = st.text_input("Text column name in CSV", value=st.session_state.text_col or "headline")
 
-        if apply_clean:
-            sentences = [clean_text(s) for s in sentences]
+        if bf is not None:
+            try:
+                bdf = pd.read_csv(bf)
+            except Exception as e:
+                st.error(f"Could not read CSV: {e}")
+                return
 
-        emb = elmo_embed_texts(sentences, elmo_layer, batch_size=32)
-        emb_std = scaler.transform(emb)
+            if text_col_name not in bdf.columns:
+                st.error(f"Column '{text_col_name}' not in CSV.")
+                return
 
-        lr_proba = lr.predict_proba(emb_std)[:, 1]
-        rf_proba = rf.predict_proba(emb)[:, 1]
+            with st.spinner("Embedding and predicting…"):
+                texts = bdf[text_col_name].astype(str).tolist()
+                emb = elmo.embed(texts, batch_size=32)
+                x_std = scaler.transform(emb)
+                lr_proba = models["lr"].predict_proba(x_std)[:, 1]
+                rf_proba = models["rf"].predict_proba(emb)[:, 1]
+                lr_pred = (lr_proba >= threshold).astype(int)
+                rf_pred = (rf_proba >= threshold).astype(int)
 
-        results = []
-        for s, p1, p2 in zip(sentences, lr_proba, rf_proba):
-            results.append({
-                "text": s,
-                "LR_prob_sarcastic": float(p1),
-                "LR_label": int(p1 >= threshold),
-                "RF_prob_sarcastic": float(p2),
-                "RF_label": int(p2 >= threshold),
-            })
-        df_res = pd.DataFrame(results)
-        st.dataframe(df_res, use_container_width=True)
+                out = bdf.copy()
+                out["proba_lr"] = lr_proba
+                out["pred_lr"] = lr_pred
+                out["proba_rf"] = rf_proba
+                out["pred_rf"] = rf_pred
 
-        st.success("Done!")
+            # Save to file
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out_path = f"sarcasm_predictions_{ts}.csv"
+            out.to_csv(out_path, index=False)
 
+            st.success(f"Done. Saved to {out_path}")
+            st.download_button("Download predictions CSV", data=out.to_csv(index=False).encode(), file_name=out_path, mime="text/csv")
 
 # ----------------------------
 # Router
 # ----------------------------
-if page == "1) Data Loading":
-    page_data_loading()
-elif page == "2) Data Preprocessing":
-    page_preprocessing()
-elif page == "3) Model Training":
-    page_training()
-elif page == "4) Model Evaluation":
+st.sidebar.markdown("---")
+st.sidebar.write("**Pages**")
+page = st.sidebar.radio(
+    "Go to",
+    ["1) Data Upload", "2) Data Preprocessing", "3) Model Training", "4) Model Evaluation", "5) Prediction"],
+    index=["1) Data Upload", "2) Data Preprocessing", "3) Model Training", "4) Model Evaluation", "5) Prediction"].index(page)
+)
+
+if page.startswith("1"):
+    page_upload()
+elif page.startswith("2"):
+    page_preprocess()
+elif page.startswith("3"):
+    page_train()
+elif page.startswith("4"):
     page_evaluation()
-elif page == "5) Prediction":
+elif page.startswith("5"):
     page_prediction()
-else:
-    st.write("Use the sidebar to navigate.")
