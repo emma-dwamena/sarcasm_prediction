@@ -7,7 +7,7 @@
 #UI: Professional dark theme.
 
 #Install (typical):
-#pip install streamlit scikit-learn matplotlib pandas numpy tensorflow==2.15.0 tensorflow-hub==0.15.0
+pip install streamlit scikit-learn matplotlib pandas numpy tensorflow==2.15.0 tensorflow-hub==0.15.0
 # (ELMo is a TF1 module; TF 2.15 + tf.compat.v1 is used.)
 
 #Run:
