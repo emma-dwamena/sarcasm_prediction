@@ -1,74 +1,50 @@
-#!/usr/bin/env python3
+
 # -*- coding: utf-8 -*-
 """
-#Sarcasm Detection App (ELMo + Logistic Regression / Random Forest)
-#Imbalance handling: **Downsampling** (majority class), with adjustable majority:minority ratio.
-#Pages: Upload → Preprocess → Train → Evaluate → Predict (single + batch).
-#UI: Professional dark theme.
-
-#Install (typical):
-pip install streamlit scikit-learn matplotlib pandas numpy tensorflow==2.15.0 tensorflow-hub==0.15.0
-# (ELMo is a TF1 module; TF 2.15 + tf.compat.v1 is used.)
-
-#Run:
-#streamlit run sarcasm_downsample_app.py
+Sarcasm Detection App — ELMo + Downsampling + Logistic Regression / Random Forest
+Pages: Upload → Preprocess (downsampling) → Train → Evaluate → Predict (single & batch)
+Metrics: Precision, Recall, F1, ROC-AUC
+UI: Professional dark theme; tabbed evaluation
 """
-import io
-import os
-import re
-import json
-import time
-import math
-import typing as T
+import os, io, re, json, base64
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 
-# ML + Metrics
+# ML
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import (
-    precision_score, recall_score, f1_score, roc_auc_score,
-    roc_curve, confusion_matrix, classification_report
-)
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, roc_curve, confusion_matrix
 
-# Plotting
-import matplotlib.pyplot as plt
-
-# TensorFlow / Hub (ELMo)
+# ------- TF Hub / ELMo (TF1-style) -------
+ELMO_URL = "https://tfhub.dev/google/elmo/3"
+TF_OK = True
 try:
     import tensorflow as tf
     import tensorflow_hub as hub
-except Exception as e:
-    tf = None
-    hub = None
+    tf.get_logger().setLevel('ERROR')
+    # ELMo v3 is a TF1 module; use TF1 compatibility:
+    tf.compat.v1.disable_eager_execution()
+    # Note: requires tensorflow-hub<=0.12.0 for hub.Module
+    _HAS_MODULE = hasattr(hub, "Module")
+    if not _HAS_MODULE:
+        TF_OK = False
+except Exception:
+    TF_OK = False
 
-# ----------------------------
-# Streamlit Page Config & Theme
-# ----------------------------
-st.set_page_config(
-    page_title="Sarcasm Detection (ELMo + LR/RF)",
-    layout="wide",
-    page_icon="📰"
-)
+# --------------- Page Config & Theme ---------------
+st.set_page_config(page_title="Sarcasm Detection (ELMo + LR/RF)", page_icon="📰", layout="wide")
 
-# Dark professional theme via CSS
 st.markdown(
     """
     <style>
     :root{
-      --bg:#0b0f19;           /* app background */
-      --panel:#121826;        /* panels/cards */
-      --border:#1f2937;       /* subtle borders */
-      --text:#e5e7eb;         /* primary text */
-      --muted:#9ca3af;        /* secondary text */
-      --accent:#60a5fa;       /* links / accents */
-      --good:#10b981;         /* success */
-      --warn:#f59e0b;         /* warning */
-      --bad:#ef4444;          /* danger */
+      --bg:#0b0f19; --panel:#121826; --border:#1f2937; --text:#e5e7eb; --muted:#9ca3af; --accent:#60a5fa;
+      --good:#10b981; --warn:#f59e0b; --bad:#ef4444;
     }
     html, body, [data-testid="stAppViewContainer"]{ background:var(--bg); color:var(--text); }
     section[data-testid="stSidebar"]{ background:linear-gradient(180deg,#0b0f19 0%, #0f172a 100%); }
@@ -77,25 +53,18 @@ st.markdown(
     .card{ background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,.15); }
     .stButton>button{ background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.6rem 1rem; box-shadow:0 1px 2px rgba(0,0,0,.25); }
     .stButton>button:hover{ border-color:#334155; }
-    .stTextInput input, .stTextArea textarea, .stNumberInput input, .stSelectbox div[data-baseweb="select"] {
+    .stTextInput input, .stTextArea textarea, .stNumberInput input, .stSelectbox div[data-baseweb="select"]{
       background: var(--panel) !important; color: var(--text) !important; border:1px solid var(--border) !important;
     }
-    div[data-testid="stDataFrame"] { background: var(--panel); border:1px solid var(--border); border-radius:12px; padding:8px; }
+    div[data-testid="stDataFrame"]{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:8px; }
     div[data-testid="stMetricValue"]{ color:var(--text); } div[data-testid="stMetricLabel"]{ color:var(--muted); }
     div[data-testid="stTabs"] > div[role="tablist"]{ position:sticky; top:0; z-index:10; background:var(--panel); border-bottom:1px solid var(--border); }
-    h1, h2, h3, h4, h5, h6 { color: var(--text); }
     .pill { display:inline-block; padding:.2rem .5rem; border-radius:9999px; border:1px solid var(--border); background:#0d1324; color:#cbd5e1; }
-    .ok { color: var(--good); }
-    .warn { color: var(--warn); }
-    .bad { color: var(--bad); }
     </style>
-    """,
-    unsafe_allow_html=True
+    """, unsafe_allow_html=True
 )
 
-# ----------------------------
-# Helpers: Session State
-# ----------------------------
+# --------------- Session State helpers ---------------
 def _init_state():
     ss = st.session_state
     ss.setdefault("df", None)
@@ -106,55 +75,48 @@ def _init_state():
     ss.setdefault("dedupe", True)
     ss.setdefault("test_size", 0.2)
     ss.setdefault("random_state", 42)
-    ss.setdefault("down_maj_mult", 1.0)   # majority:minority target after downsample (>=1.0)
-    ss.setdefault("elmo", None)           # ELMo embedder (initialized once)
-    ss.setdefault("X_train_emb", None)
-    ss.setdefault("X_test_emb", None)
-    ss.setdefault("y_train", None)
-    ss.setdefault("y_test", None)
+    ss.setdefault("down_maj_mult", 1.0)   # target majority:minority after downsample (>=1.0)
+    ss.setdefault("elmo", None)           # ELMo embedder instance
+    ss.setdefault("X_train_emb", None); ss.setdefault("X_test_emb", None)
+    ss.setdefault("y_train", None); ss.setdefault("y_test", None)
     ss.setdefault("scaler", None)
-    ss.setdefault("models", {})           # {"lr": model, "rf": model}
+    ss.setdefault("models", {})
     ss.setdefault("threshold", 0.5)
-    ss.setdefault("train_done", False)
     ss.setdefault("prep_cache", None)
 
 _init_state()
 
-# ----------------------------
-# Text Cleaning
-# ----------------------------
+# --------------- Basic cleaning ---------------
 _punct_pattern = re.compile(r"[^\w\s]")
 def basic_clean(text, lower=True, remove_punct=True):
     if not isinstance(text, str):
         return ""
     t = text.strip()
-    if lower:
-        t = t.lower()
-    if remove_punct:
-        t = _punct_pattern.sub(" ", t)
+    if lower: t = t.lower()
+    if remove_punct: t = _punct_pattern.sub(" ", t)
     t = re.sub(r"\s+", " ", t)
     return t
 
-# ----------------------------
-# ELMo Embedder (TF1 hub.Module)
-# ----------------------------
+# --------------- ELMo Embedder ---------------
 class ELMoEmbedder:
     def __init__(self, url: str = ELMO_URL):
         if not TF_OK:
-            raise RuntimeError("TensorFlow / TF-Hub not available. Please install tensorflow<=2.15 and tensorflow-hub.")
+            raise RuntimeError("""TensorFlow / tensorflow-hub not available or incompatible.
+Required:
+  pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
+(ELMo v3 uses TF1 hub.Module; newer tensorflow-hub removes hub.Module.)"""
+            )
         self.graph = tf.Graph()
         with self.graph.as_default():
             self.text_input = tf.compat.v1.placeholder(tf.string, shape=[None], name="text_input")
             self.module = hub.Module(url, trainable=False, name="elmo_module")
-            # 'elmo' output (token-level, 1024); average across time to get sentence embedding.
             elmo_out = self.module(self.text_input, signature="default", as_dict=True)["elmo"]
             self.sentence_emb = tf.reduce_mean(elmo_out, axis=1, name="sentence_embedding")
-            self.init_op = tf.group([tf.compat.v1.global_variables_initializer(), tf.compat.v1.tables_initializer()])
+            self.init_op = tf.group(tf.compat.v1.global_variables_initializer(), tf.compat.v1.tables_initializer())
         self.sess = tf.compat.v1.Session(graph=self.graph)
         self.sess.run(self.init_op)
 
     def embed(self, texts, batch_size=32):
-        # Returns numpy array [n_samples, 1024]
         if isinstance(texts, (pd.Series, list, tuple)):
             texts = list(texts)
         elif isinstance(texts, np.ndarray):
@@ -168,67 +130,49 @@ class ELMoEmbedder:
             mats.append(vecs)
         return np.vstack(mats)
 
-# ----------------------------
-# Downsampling helper (without imblearn dependency)
-# ----------------------------
+# --------------- Downsampling helper ---------------
 def random_downsample(X, y, maj_mult=1.0, random_state=42):
-    """Randomly downsample the majority class to achieve a majority:minority ratio of `maj_mult`.
-    X: np.ndarray [n, d]; y: np.ndarray [n]; binary labels {0,1}.
-    Returns: X_ds, y_ds
-    """
+    """Downsample majority class to achieve majority:minority ~= maj_mult (>=1.0)."""
     rng = np.random.RandomState(random_state)
     y = np.asarray(y).astype(int)
     idx0 = np.where(y == 0)[0]
     idx1 = np.where(y == 1)[0]
     n0, n1 = len(idx0), len(idx1)
     if n0 == 0 or n1 == 0:
-        # Degenerate, no downsampling
         return X, y
-
-    # Identify majority/minority
     if n0 >= n1:
-        maj_label, maj_idx, min_label, min_idx = 0, idx0, 1, idx1
+        maj_idx, min_idx = idx0, idx1
         nmaj, nmin = n0, n1
     else:
-        maj_label, maj_idx, min_label, min_idx = 1, idx1, 0, idx0
+        maj_idx, min_idx = idx1, idx0
         nmaj, nmin = n1, n0
-
-    desired_maj = int(max(nmin, np.floor(nmin * maj_mult)))  # ensure >= nmin
-    desired_maj = min(desired_maj, nmaj)  # don't overshoot
-
+    desired_maj = int(max(nmin, np.floor(nmin * maj_mult)))
+    desired_maj = min(desired_maj, nmaj)
     if nmaj > desired_maj:
         keep_maj = rng.choice(maj_idx, size=desired_maj, replace=False)
     else:
         keep_maj = maj_idx
-
     keep_idx = np.concatenate([min_idx, keep_maj])
     rng.shuffle(keep_idx)
     return X[keep_idx], y[keep_idx]
 
-# ----------------------------
-# Sidebar Navigation
-# ----------------------------
-st.sidebar.title("📰 Sarcasm Detector (Downsampling)")
-page = st.sidebar.radio(
-    "Navigate",
-    [
-        "1) Data Upload",
-        "2) Data Preprocessing",
-        "3) Model Training",
-        "4) Model Evaluation",
-        "5) Prediction"
-    ]
-)
+# --------------- Sidebar Navigation ---------------
+st.sidebar.title("📰 Sarcasm Detector (ELMo + Downsampling)")
+page = st.sidebar.radio("Navigate", [
+    "1) Data Upload",
+    "2) Data Preprocessing",
+    "3) Model Training",
+    "4) Model Evaluation",
+    "5) Prediction",
+])
 
 st.sidebar.markdown("---")
 st.sidebar.caption("ELMo → Logistic Regression / Random Forest • Precision / Recall / F1 / ROC-AUC")
 
-# ----------------------------
-# Page 1 — Data Upload
-# ----------------------------
+# --------------- Page 1: Upload ---------------
 def page_upload():
     st.title("1) Data Upload")
-    st.markdown("Upload the Kaggle **Sarcasm** dataset. Supports **CSV** and **JSON** (array or JSON lines).")
+    st.markdown("Upload the Kaggle **Sarcasm** dataset. Supports **CSV** and **JSON** (array or JSONL).")
     f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
 
     if f is not None:
@@ -258,21 +202,18 @@ def page_upload():
         with st.expander("Preview (first 10 rows)", expanded=True):
             st.dataframe(df.head(10), use_container_width=True)
 
-        # Column mapping
         cols = list(df.columns)
         st.subheader("Select Columns")
         default_text = "headline" if "headline" in cols else cols[0]
         default_label = "is_sarcastic" if "is_sarcastic" in cols else cols[-1]
-        st.session_state.text_col = st.selectbox("Text column", cols, index=cols.index(default_text) if default_text in cols else 0, key="text_col_select")
-        st.session_state.label_col = st.selectbox("Label column (0/1)", cols, index=cols.index(default_label) if default_label in cols else len(cols)-1, key="label_col_select")
+        st.session_state.text_col = st.selectbox("Text column", cols, index=cols.index(default_text) if default_text in cols else 0)
+        st.session_state.label_col = st.selectbox("Label column (0/1)", cols, index=cols.index(default_label) if default_label in cols else len(cols)-1)
 
-        st.info("Tip: Kaggle 'News Headlines' uses **headline** for text and **is_sarcastic** (0/1) for labels.")
+        st.info("Tip: Common columns are **headline** (text) and **is_sarcastic** (label).")
 
-# ----------------------------
-# Page 2 — Data Preprocessing (with Downsampling)
-# ----------------------------
+# --------------- Page 2: Preprocessing ---------------
 def page_preprocess():
-    st.title("2) Data Preprocessing — with Downsampling")
+    st.title("2) Data Preprocessing — Downsampling")
 
     if st.session_state.df is None:
         st.warning("Please upload a dataset in **1) Data Upload**.")
@@ -281,12 +222,10 @@ def page_preprocess():
     df = st.session_state.df.copy()
     text_col = st.session_state.text_col
     label_col = st.session_state.label_col
-
     if text_col is None or label_col is None:
         st.warning("Select text and label columns in **1) Data Upload**.")
         return
 
-    # Cleaning options
     st.subheader("Text Cleaning")
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -298,7 +237,6 @@ def page_preprocess():
 
     df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
     df["__label__"] = pd.to_numeric(df[label_col], errors="coerce").fillna(0).astype(int)
-
     if st.session_state.dedupe:
         df = df.drop_duplicates(subset="__text__")
 
@@ -322,7 +260,7 @@ def page_preprocess():
 
     # Downsampling config
     st.subheader("Imbalance Handling — Downsampling")
-    st.caption("Reduce the majority class in the **training set** only. Choose target majority:minority ratio (≥ 1.0). Example: 1.0 → 50/50; 1.5 → majority is 1.5× minority.")
+    st.caption("Reduce the majority class **in the training set only**. Target majority:minority ratio (≥ 1.0). Example: 1.0 → 50/50; 1.5 → majority is 1.5× minority.")
     st.session_state.down_maj_mult = st.slider("Target majority:minority ratio after downsampling", 1.0, 3.0, float(st.session_state.down_maj_mult), 0.1)
 
     # Split
@@ -336,9 +274,12 @@ def page_preprocess():
     st.subheader("ELMo Embeddings")
     if st.session_state.elmo is None:
         if not TF_OK:
-            st.error("TensorFlow / tensorflow-hub not available. Please install:
+            st.error("""TensorFlow / tensorflow-hub not available or incompatible.
+Install these exact versions:
 
-`pip install tensorflow==2.15.0 tensorflow-hub==0.15.0`")
+pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
+
+(ELMo v3 requires TF1 hub.Module.)""")
             return
         with st.spinner("Loading ELMo module from TF Hub… (first run may take a while)"):
             try:
@@ -355,17 +296,16 @@ def page_preprocess():
     with st.spinner("Embedding test texts with ELMo…"):
         X_test_emb = st.session_state.elmo.embed(X_test, batch_size=bsz)
 
-    # Scale for LR; RF can take raw embeddings
+    # Scale for LR; RF uses raw embeddings
     scaler = StandardScaler()
     X_train_std = scaler.fit_transform(X_train_emb)
     X_test_std = scaler.transform(X_test_emb)
 
-    # Downsample (train only), both views (std for LR, raw for RF)
+    # Downsample (train only), both views
     maj_mult = float(st.session_state.down_maj_mult)
     X_lr_train, y_lr_train = random_downsample(X_train_std, y_train, maj_mult=maj_mult, random_state=st.session_state.random_state)
     X_rf_train, y_rf_train = random_downsample(X_train_emb, y_train, maj_mult=maj_mult, random_state=st.session_state.random_state)
 
-    # Report class counts after downsampling
     def _counts(yv):
         v = pd.Series(yv).value_counts().sort_index()
         return int(v.get(0,0)), int(v.get(1,0))
@@ -397,9 +337,7 @@ def page_preprocess():
 
     st.success("Preprocessing complete. Proceed to **3) Model Training**.")
 
-# ----------------------------
-# Page 3 — Model Training
-# ----------------------------
+# --------------- Page 3: Training ---------------
 def page_train():
     st.title("3) Model Training")
     required = ["X_train_emb", "X_test_emb", "y_train", "y_test", "scaler", "prep_cache"]
@@ -408,31 +346,24 @@ def page_train():
         return
 
     cache = st.session_state.prep_cache
-    X_lr_train = cache["X_lr_train"]
-    y_lr_train = cache["y_lr_train"]
-    X_rf_train = cache["X_rf_train"]
-    y_rf_train = cache["y_rf_train"]
+    X_lr_train = cache["X_lr_train"]; y_lr_train = cache["y_lr_train"]
+    X_rf_train = cache["X_rf_train"]; y_rf_train = cache["y_rf_train"]
 
     st.subheader("Hyperparameters")
     c1, c2, c3 = st.columns(3)
     with c1:
-        C = st.number_input("LogReg C (inverse regularization strength)", 0.01, 100.0, 1.0, step=0.05)
+        C = st.number_input("Logistic Regression C (inverse regularization)", 0.01, 100.0, 1.0, step=0.05)
     with c2:
         n_estimators = st.number_input("RandomForest n_estimators", 50, 1000, 300, step=50)
     with c3:
         max_depth = st.number_input("RandomForest max_depth (0 = None)", 0, 100, 0, step=1)
         max_depth = None if max_depth == 0 else int(max_depth)
 
-    st.subheader("Train Models")
     colA, colB = st.columns(2)
-
     with colA:
         with st.spinner("Training Logistic Regression…"):
-            lr = LogisticRegression(
-                C=C, solver="liblinear", random_state=st.session_state.random_state
-            )
+            lr = LogisticRegression(C=C, solver="liblinear", random_state=st.session_state.random_state)
             lr.fit(X_lr_train, y_lr_train)
-
     with colB:
         with st.spinner("Training Random Forest…"):
             rf = RandomForestClassifier(
@@ -442,21 +373,16 @@ def page_train():
             rf.fit(X_rf_train, y_rf_train)
 
     st.session_state.models = {"lr": lr, "rf": rf}
-    st.session_state.train_done = True
     st.success("Training complete. Proceed to **4) Model Evaluation**.")
 
-# ----------------------------
-# Metrics utilities
-# ----------------------------
+# --------------- Metrics table helper ---------------
 def metric_table(metrics_dict):
     rows = []
     for model_name, m in metrics_dict.items():
         rows.append([model_name, m["Precision"], m["Recall"], m["F1"], m["ROC-AUC"]])
     return pd.DataFrame(rows, columns=["Model", "Precision", "Recall", "F1", "ROC-AUC"])
 
-# ----------------------------
-# Page 4 — Model Evaluation
-# ----------------------------
+# --------------- Page 4: Evaluation ---------------
 def page_evaluation():
     st.title("4) Model Evaluation")
     req = ["models", "X_test_emb", "y_test", "scaler", "prep_cache"]
@@ -473,17 +399,14 @@ def page_evaluation():
     lr = models["lr"]
     rf = models["rf"]
 
-    # Predict probabilities
     lr_proba = lr.predict_proba(X_test_std)[:, 1]
     rf_proba = rf.predict_proba(X_test_emb)[:, 1]
 
-    # Threshold control
     st.session_state.threshold = st.slider("Decision threshold (affects Precision/Recall/F1)", 0.1, 0.9, float(st.session_state.threshold), 0.05)
     thresh = st.session_state.threshold
     lr_pred = (lr_proba >= thresh).astype(int)
     rf_pred = (rf_proba >= thresh).astype(int)
 
-    # Metrics
     metrics = {
         "Logistic Regression": {
             "Precision": precision_score(y_test, lr_pred, zero_division=0),
@@ -523,20 +446,14 @@ def page_evaluation():
         import matplotlib.pyplot as plt
         fpr_lr, tpr_lr, _ = roc_curve(y_test, lr_proba)
         fpr_rf, tpr_rf, _ = roc_curve(y_test, rf_proba)
-
         fig = plt.figure(figsize=(6, 5))
         plt.plot(fpr_lr, tpr_lr, label=f"LogReg (AUC={metrics['Logistic Regression']['ROC-AUC']:.3f})")
         plt.plot(fpr_rf, tpr_rf, label=f"RandForest (AUC={metrics['Random Forest']['ROC-AUC']:.3f})")
         plt.plot([0, 1], [0, 1], linestyle="--")
-        plt.xlabel("False Positive Rate")
-        plt.ylabel("True Positive Rate")
-        plt.title("ROC Curves")
-        plt.legend(loc="lower right")
+        plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate"); plt.title("ROC Curves"); plt.legend(loc="lower right")
         st.pyplot(fig)
 
-# ----------------------------
-# Page 5 — Prediction
-# ----------------------------
+# --------------- Page 5: Prediction ---------------
 def page_prediction():
     st.title("5) Prediction")
 
@@ -602,25 +519,13 @@ def page_prediction():
                 out["proba_rf"] = rf_proba
                 out["pred_rf"] = rf_pred
 
-            # Save to file
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             out_path = f"sarcasm_predictions_{ts}.csv"
             out.to_csv(out_path, index=False)
-
             st.success(f"Done. Saved to {out_path}")
             st.download_button("Download predictions CSV", data=out.to_csv(index=False).encode(), file_name=out_path, mime="text/csv")
 
-# ----------------------------
-# Router
-# ----------------------------
-st.sidebar.markdown("---")
-st.sidebar.write("**Pages**")
-page = st.sidebar.radio(
-    "Go to",
-    ["1) Data Upload", "2) Data Preprocessing", "3) Model Training", "4) Model Evaluation", "5) Prediction"],
-    index=["1) Data Upload", "2) Data Preprocessing", "3) Model Training", "4) Model Evaluation", "5) Prediction"].index(page)
-)
-
+# --------------- Router ---------------
 if page.startswith("1"):
     page_upload()
 elif page.startswith("2"):
