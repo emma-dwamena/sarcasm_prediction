@@ -13,38 +13,38 @@ pip install streamlit scikit-learn matplotlib pandas numpy tensorflow==2.15.0 te
 #Run:
 #streamlit run sarcasm_downsample_app.py
 
-import os
 import io
+import os
 import re
 import json
-import base64
-from datetime import datetime
+import time
+import math
+import typing as T
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 
-# --- ML / Metrics ---
+# ML + Metrics
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     precision_score, recall_score, f1_score, roc_auc_score,
-    roc_curve, confusion_matrix
+    roc_curve, confusion_matrix, classification_report
 )
 
-# --- ELMo / TF Hub (TF1-style) ---
-ELMO_URL = "https://tfhub.dev/google/elmo/3"
-TF_OK = True
+# Plotting
+import matplotlib.pyplot as plt
+
+# TensorFlow / Hub (ELMo)
 try:
     import tensorflow as tf
     import tensorflow_hub as hub
-    tf.get_logger().setLevel("ERROR")
-    # We'll use TF1-compat mode because ELMo is a TF1 module.
-    tf.compat.v1.disable_eager_execution()
-except Exception as _e:
-    TF_OK = False
+except Exception as e:
+    tf = None
+    hub = None
 
 # ----------------------------
 # Streamlit Page Config & Theme
