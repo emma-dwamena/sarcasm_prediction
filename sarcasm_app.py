@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
+
 # -*- coding: utf-8 -*-
 """
-Sarcasm Detection App — ELMo + Downsampling + Logistic Regression / Random Forest
-Robust to small/degenerate class counts in splits.
-Pages: Upload → Preprocess (downsampling) → Train → Evaluate → Predict (single & batch)
+Sarcasm Detection App — ELMo + Balanced Downsampling (1:1) + Logistic Regression / Random Forest
+Pages: Upload → Preprocess (balanced downsampling) → Train → Evaluate → Predict (single & batch)
 Metrics: Precision, Recall, F1, ROC-AUC
-UI: Professional dark theme; tabbed evaluation
+UI: Professional dark theme; tabbed evaluation; robust error handling
 """
+
 import os, io, re, json, base64
 from datetime import datetime
 
@@ -61,7 +61,8 @@ st.markdown(
     div[data-testid="stTabs"] > div[role="tablist"]{ position:sticky; top:0; z-index:10; background:var(--panel); border-bottom:1px solid var(--border); }
     .pill { display:inline-block; padding:.2rem .5rem; border-radius:9999px; border:1px solid var(--border); background:#0d1324; color:#cbd5e1; }
     </style>
-    """, unsafe_allow_html=True
+    """,
+    unsafe_allow_html=True
 )
 
 # --------------- Session State helpers ---------------
@@ -75,7 +76,6 @@ def _init_state():
     ss.setdefault("dedupe", True)
     ss.setdefault("test_size", 0.2)
     ss.setdefault("random_state", 42)
-    ss.setdefault("down_maj_mult", 1.0)   # target majority:minority after downsample (>=1.0)
     ss.setdefault("elmo", None)           # ELMo embedder instance
     ss.setdefault("X_train_emb", None); ss.setdefault("X_test_emb", None)
     ss.setdefault("y_train", None); ss.setdefault("y_test", None)
@@ -101,10 +101,13 @@ def basic_clean(text, lower=True, remove_punct=True):
 class ELMoEmbedder:
     def __init__(self, url: str = ELMO_URL):
         if not TF_OK:
-            raise RuntimeError("""TensorFlow / tensorflow-hub not available or incompatible.
-Required (exact versions):
-  pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
-(ELMo v3 uses TF1 hub.Module; newer tensorflow-hub removes hub.Module.)""")
+            st.error("""TensorFlow / tensorflow-hub not available or incompatible.
+Install exact versions:
+
+pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
+
+(ELMo v3 requires TF1 hub.Module.)""")
+            raise RuntimeError("TF/Hub unavailable")
         self.graph = tf.Graph()
         with self.graph.as_default():
             self.text_input = tf.compat.v1.placeholder(tf.string, shape=[None], name="text_input")
@@ -129,34 +132,29 @@ Required (exact versions):
             mats.append(vecs)
         return np.vstack(mats)
 
-# --------------- Downsampling helper ---------------
-def random_downsample(X, y, maj_mult=1.0, random_state=42):
-    """Downsample majority class to achieve majority:minority ~= maj_mult (>=1.0)."""
+# --------------- Balanced Downsampling helper ---------------
+def balanced_downsample(X, y, random_state=42):
+    """Downsample majority class so that classes are 1:1 in the *training* set."""
     rng = np.random.RandomState(random_state)
     y = np.asarray(y).astype(int)
     idx0 = np.where(y == 0)[0]
     idx1 = np.where(y == 1)[0]
     n0, n1 = len(idx0), len(idx1)
     if n0 == 0 or n1 == 0:
-        return X, y
-    if n0 >= n1:
-        maj_idx, min_idx = idx0, idx1
-        nmaj, nmin = n0, n1
+        return X, y  # can't balance if a class is missing
+    if n0 > n1:
+        keep_maj = rng.choice(idx0, size=n1, replace=False)
+        keep_idx = np.concatenate([idx1, keep_maj])
+    elif n1 > n0:
+        keep_maj = rng.choice(idx1, size=n0, replace=False)
+        keep_idx = np.concatenate([idx0, keep_maj])
     else:
-        maj_idx, min_idx = idx1, idx0
-        nmaj, nmin = n1, n0
-    desired_maj = int(max(nmin, np.floor(nmin * maj_mult)))
-    desired_maj = min(desired_maj, nmaj)
-    if nmaj > desired_maj:
-        keep_maj = rng.choice(maj_idx, size=desired_maj, replace=False)
-    else:
-        keep_maj = maj_idx
-    keep_idx = np.concatenate([min_idx, keep_maj])
+        keep_idx = np.arange(len(y))
     rng.shuffle(keep_idx)
     return X[keep_idx], y[keep_idx]
 
 # --------------- Sidebar Navigation ---------------
-st.sidebar.title("📰 Sarcasm Detector (ELMo + Downsampling)")
+st.sidebar.title("📰 Sarcasm Detector (Balanced Downsampling)")
 page = st.sidebar.radio("Navigate", [
     "1) Data Upload",
     "2) Data Preprocessing",
@@ -212,7 +210,7 @@ def page_upload():
 
 # --------------- Page 2: Preprocessing ---------------
 def page_preprocess():
-    st.title("2) Data Preprocessing — Downsampling")
+    st.title("2) Data Preprocessing — Balanced Downsampling (1:1)")
 
     if st.session_state.df is None:
         st.warning("Please upload a dataset in **1) Data Upload**.")
@@ -241,7 +239,6 @@ def page_preprocess():
     if raw_lbl.dtype == bool:
         df["__label__"] = raw_lbl.astype(int)
     else:
-        # Map common strings
         m = raw_lbl.astype(str).str.strip().str.lower().map({
             "1": 1, "true": 1, "yes": 1, "sarcastic": 1,
             "0": 0, "false": 0, "no": 0, "not sarcastic": 0
@@ -290,7 +287,7 @@ def page_preprocess():
     if st.session_state.elmo is None:
         if not TF_OK:
             st.error("""TensorFlow / tensorflow-hub not available or incompatible.
-Install these exact versions:
+Install exact versions:
 
 pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
 
@@ -316,10 +313,9 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
     X_train_std = scaler.fit_transform(X_train_emb)
     X_test_std = scaler.transform(X_test_emb)
 
-    # Downsample (train only), both views
-    maj_mult = float(st.session_state.down_maj_mult)
-    X_lr_train, y_lr_train = random_downsample(X_train_std, y_train, maj_mult=maj_mult, random_state=st.session_state.random_state)
-    X_rf_train, y_rf_train = random_downsample(X_train_emb, y_train, maj_mult=maj_mult, random_state=st.session_state.random_state)
+    # Balanced Downsample (train only), both views
+    X_lr_train, y_lr_train = balanced_downsample(X_train_std, y_train, random_state=st.session_state.random_state)
+    X_rf_train, y_rf_train = balanced_downsample(X_train_emb, y_train, random_state=st.session_state.random_state)
 
     def _counts(yv):
         v = pd.Series(yv).value_counts().sort_index()
@@ -329,7 +325,7 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
     n0_lr_after, n1_lr_after = _counts(y_lr_train)
     n0_rf_after, n1_rf_after = _counts(y_rf_train)
 
-    with st.expander("Train set class counts (before → after downsampling)", expanded=True):
+    with st.expander("Train set class counts (before → after balanced downsampling)", expanded=True):
         st.write(pd.DataFrame({
             "view": ["LR (scaled)", "RF (raw)"],
             "0_before": [n0_before, n0_before],
