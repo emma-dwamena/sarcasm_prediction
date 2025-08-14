@@ -22,6 +22,18 @@ import hashlib
 import pandas as pd
 import streamlit as st
 
+# --- UI helper (session only): stable hash of a list of texts ---
+def _hash_texts(texts):
+    import hashlib as _hl
+    m = _hl.md5()
+    for t in texts:
+        if not isinstance(t, str):
+            t = str(t)
+        m.update(t.encode("utf-8"))
+        m.update(b"\n")
+    return m.hexdigest()
+# --- end helper ---
+
 # === UI helper: ELMo embedding with visible progress (no ML changes) ===
 def _embed_with_progress(texts, elmo_module, batch_size=32, label="texts"):
     total = len(texts)
@@ -265,24 +277,6 @@ def downsample_ratio(X, y, maj_mult=1.0, random_state=42):
 # Downsampling Distribution Plot
 # ==============================
 def st_plot_dist(y_before, y_after, title):
-    """Bar chart: class counts before vs after downsampling (Streamlit)."""
-    import matplotlib.pyplot as plt
-    y_before = np.asarray(y_before).astype(int)
-    y_after  = np.asarray(y_after).astype(int)
-    def _counts(y):
-        c = np.bincount(y, minlength=2)[:2]
-        return int(c[0]), int(c[1])
-    c0b, c1b = _counts(y_before)
-    c0a, c1a = _counts(y_after)
-    labels = ["Class 0 (Not Sarcastic)", "Class 1 (Sarcastic)"]
-    x = np.arange(len(labels)); width = 0.35
-    fig = plt.figure(figsize=(7, 5))
-    plt.bar(x - width/2, [c0b, c1b], width, label="Before")
-    plt.bar(x + width/2, [c0a, c1a], width, label="After")
-    for i, v in enumerate([c0b, c1b]): plt.text(x[i] - width/2, v, str(v), ha='center', va='bottom')
-    for i, v in enumerate([c0a, c1a]): plt.text(x[i] + width/2, v, str(v), ha='center', va='bottom')
-    plt.xticks(x, labels); plt.ylabel("Count"); plt.title(title); plt.legend(loc="best"); plt.tight_layout()
-    st.pyplot(fig)
 
 def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), preds=("Pred 0","Pred 1")):
     import matplotlib.pyplot as plt
