@@ -170,10 +170,9 @@ def _init_state():
     ss.setdefault("elmo", None)
     ss.setdefault("X_train_emb", None)
     ss.setdefault("X_test_emb", None)
-    
-    ss.setdefault(\"X_train_key\", None)
-    ss.setdefault(\"X_test_key\", None)
-ss.setdefault("y_train", None)
+    ss.setdefault("X_train_key", None)
+    ss.setdefault("X_test_key", None)
+    ss.setdefault("y_train", None)
     ss.setdefault("y_test", None)
     ss.setdefault("scaler", None)
     ss.setdefault("models", {})
@@ -266,6 +265,24 @@ def downsample_ratio(X, y, maj_mult=1.0, random_state=42):
 # Downsampling Distribution Plot
 # ==============================
 def st_plot_dist(y_before, y_after, title):
+
+def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), preds=("Pred 0","Pred 1")):
+    import matplotlib.pyplot as plt
+    fig = plt.figure(figsize=(4.8,4.2))
+    ax = plt.gca()
+    im = ax.imshow(cm, cmap="viridis")
+    ax.set_title(title)
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("Actual")
+    ax.set_xticks([0,1]); ax.set_xticklabels(list(preds))
+    ax.set_yticks([0,1]); ax.set_yticklabels(list(labels))
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, str(int(cm[i, j])), ha="center", va="center",
+                    color="white" if cm[i,j] > cm.max()/2 else "black")
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    st.pyplot(fig)
     """Bar chart: class counts before vs after downsampling (Streamlit)."""
     import matplotlib.pyplot as plt
     y_before = np.asarray(y_before).astype(int)
@@ -283,25 +300,6 @@ def st_plot_dist(y_before, y_after, title):
     for i, v in enumerate([c0b, c1b]): plt.text(x[i] - width/2, v, str(v), ha='center', va='bottom')
     for i, v in enumerate([c0a, c1a]): plt.text(x[i] + width/2, v, str(v), ha='center', va='bottom')
     plt.xticks(x, labels); plt.ylabel("Count"); plt.title(title); plt.legend(loc="best"); plt.tight_layout()
-    st.pyplot(fig)
-
-def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), preds=("Pred 0","Pred 1")):
-    import matplotlib.pyplot as plt
-    fig = plt.figure(figsize=(4.8,4.2))
-    ax = plt.gca()
-    im = ax.imshow(cm, cmap="viridis")
-    ax.set_title(title)
-    ax.set_xlabel("Predicted")
-    ax.set_ylabel("Actual")
-    ax.set_xticks([0,1]); ax.set_xticklabels(list(preds))
-    ax.set_yticks([0,1]); ax.set_yticklabels(list(labels))
-    # Annotate counts
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            ax.text(j, i, str(int(cm[i, j])), ha="center", va="center",
-                    color=("white" if cm[i, j] > cm.max()/2 else "black"))
-    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    plt.tight_layout()
     st.pyplot(fig)
 
 # ==============================
@@ -440,7 +438,9 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
         st.success("ELMo loaded.")
 
     bsz = 32
-# --- Session-cached ELMo embeddings (UI-only; avoids recomputing when returning to this page) ---
+# --- Session-cached ELMo embeddings (UI/session only) ---
+st.session_state.setdefault("X_train_key", None)
+st.session_state.setdefault("X_test_key", None)
 key_train = hashlib.md5("
 ".join(list(X_train)).encode("utf-8")).hexdigest()
 key_test  = hashlib.md5("
