@@ -461,8 +461,6 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
 # Page 3 — Model Training
 # ==============================
 def page_train():
-    
-    st.title("Model Training")
     required = ["X_train_emb", "X_test_emb", "y_train", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in required):
         st.warning("Please finish **Data Preprocessing** first."); return
