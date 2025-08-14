@@ -68,85 +68,7 @@ except Exception:
 # ==============================
 st.set_page_config(page_title="Sarcasm Detection (ELMo + LR/RF)", page_icon="📰", layout="wide")
 
-st.markdown(
-    """
-    <style>
-    :root{
-      --bg:#ffffff; --panel:#f9fafb; --border:#d1d5db; --text:#111827;
-      --muted:#6b7280; --accent:#2563eb; --good:#16a34a; --warn:#d97706; --bad:#dc2626;
-    }
 
-    /* App background & sidebar */
-    html, body, [data-testid="stAppViewContainer"]{ background:var(--bg); color:var(--text); }
-    section[data-testid="stSidebar"]{ background:linear-gradient(180deg,#f3f4f6 0%, #e5e7eb 100%); }
-    section[data-testid="stSidebar"] *{ color:#111827 !important; }
-
-    a { color: var(--accent) !important; }
-
-    /* Cards / panels */
-    .card{
-      background:var(--panel); border:1px solid var(--border);
-      border-radius:16px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,.05);
-    }
-
-    /* Buttons */
-    .stButton>button, .stDownloadButton>button{
-      background:var(--panel); color:var(--text); border:1px solid var(--border);
-      border-radius:10px; padding:.6rem 1rem;
-    }
-    .stButton>button:hover, .stDownloadButton>button:hover{ border-color:#9ca3af; }
-
-    /* Inputs (text/number/textarea) */
-    .stTextInput input, .stTextArea textarea, .stNumberInput input{
-      background: var(--panel) !important; color: var(--text) !important; border:1px solid var(--border) !important;
-    }
-
-    /* Selectbox / Multiselect */
-    div[data-baseweb="select"] > div{
-      background: var(--panel) !important; color: var(--text) !important; border:1px solid var(--border) !important;
-    }
-    div[data-baseweb="select"] svg{ color: var(--muted) !important; }
-
-    /* File Uploader */
-    section[data-testid="stFileUploaderDropzone"]{
-      background: var(--panel) !important; border:1px dashed var(--border) !important; border-radius:12px !important;
-    }
-
-    /* Dataframe */
-    div[data-testid="stDataFrame"]{
-      background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:8px;
-    }
-
-    /* Metrics */
-    div[data-testid="stMetricValue"]{ color:var(--text) !important; }
-    div[data-testid="stMetricLabel"]{ color:var(--muted) !important; }
-
-    /* Tabs: sticky with accent underline on active */
-    div[data-testid="stTabs"] > div[role="tablist"]{
-      position:sticky; top:0; z-index:10; background:var(--panel); border-bottom:1px solid var(--border);
-    }
-    div[role="tab"]{
-      color: var(--muted) !important; border-bottom: 2px solid transparent !important; padding-bottom:.4rem !important;
-    }
-    div[role="tab"][aria-selected="true"]{
-      color: var(--text) !important; border-bottom: 2px solid var(--accent) !important;
-    }
-
-    /* Expanders */
-    details[data-testid="stExpander"]{
-      background: var(--panel); border:1px solid var(--border); border-radius:12px;
-    }
-
-    /* Code blocks & tables in markdown */
-    pre, code, .stMarkdown table{
-      background: var(--panel) !important; color: var(--text) !important;
-      border:1px solid var(--border) !important; border-radius:8px;
-    }
-    .stMarkdown table th, .stMarkdown table td{ border-color: var(--border) !important; }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
 
 # ==============================
@@ -301,13 +223,6 @@ def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), pre
 # Sidebar Navigation
 # ==============================
 st.sidebar.title("📰 Sarcasm Detector")
-page = st.sidebar.radio("Navigate", [
-    "Data Upload",
-    "Data Preprocessing",
-    "Model Training",
-    "Model Evaluation",
-    "Prediction",
-])
 st.sidebar.markdown("---")
 st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
 st.sidebar.markdown("---")
@@ -521,22 +436,6 @@ def _safe_auc(y_true, scores):
     except Exception: return float("nan")
 
 def page_evaluation():
-    # --- Safety guard: ensure artifacts exist before evaluation (UI-only) ---
-    ss = st.session_state
-    models = ss.get('models', {})
-    missing = []
-    if not isinstance(models, dict) or 'lr' not in models or 'rf' not in models:
-        missing.append('trained models (LR/RF)')
-    if ss.get('X_test_emb') is None:
-        missing.append('test embeddings')
-    if ss.get('y_test') is None:
-        missing.append('test labels')
-    if ss.get('scaler') is None:
-        missing.append('standard scaler (LR)')
-    if missing:
-        st.warning('Evaluation prerequisites are missing: ' + ', '.join(missing) + '. Go to **Data Preprocessing** then **Model Training**.')
-        return
-    # --- End guard ---
     st.title("Model Evaluation")
     req = ["models", "X_test_emb", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
@@ -648,8 +547,72 @@ def page_prediction():
 # Router
 # ==============================
 st.sidebar.markdown("---")
-if page == "Data Upload":   page_upload()
-elif page == "Data Preprocessing": page_preprocess()
-elif page == "Model Training": page_train()
-elif page == "Model Evaluation": page_evaluation()
-elif page == "Prediction": page_prediction()
+
+# --- Fixed top navigation tabs (UI-only; ML code untouched) ---
+st.markdown(
+    """
+    <style>
+    /* Pin the FIRST st.tabs container to the top */
+    div[data-testid='stTabs']:first-of-type {
+        position: fixed; top: 0; left: 0; right: 0; width: 100%;
+        z-index: 10000;
+        background: var(--bg, #f6f8fb);
+        margin: 0;
+    }
+    /* Style the tablist and add a divider + shadow */
+    div[data-testid='stTabs']:first-of-type > div[role='tablist'] {
+        position: relative;
+        border-bottom: 1px solid #e5e7eb;
+        box-shadow: 0 2px 6px rgba(0,0,0,.06);
+        padding-top: .35rem; padding-bottom: .35rem;
+        background: transparent;
+    }
+    /* Make space so content isn't hidden under the fixed tabs */
+    .block-container { padding-top: 4.8rem; }
+    /* Keep Streamlit header/menu above tabs */
+    header[data-testid='stHeader'] { z-index: 10100; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+_tab_labels = [
+    "About",
+    "Home & Data Overview",
+    "Data Preprocessing",
+    "Model Training",
+    "Model Evaluation",
+    "Prediction Interface",
+]
+_tabs = st.tabs(_tab_labels)
+
+with _tabs[0]:
+    st.title("About")
+    st.markdown("This app demonstrates sarcasm detection with ELMo embeddings + Logistic Regression & Random Forest.")
+
+with _tabs[1]:
+    # Your original 'home/data' page
+    page_upload()
+
+with _tabs[2]:
+    st.subheader("Data Preprocessing")
+    if st.button("▶ Start Preprocessing", key="btn_preprocess_start"):
+        page_preprocess()
+    else:
+        st.info("Click **Start Preprocessing** to begin. This keeps your settings visible before running.")
+
+with _tabs[3]:
+    st.subheader("Model Training")
+    if st.button("▶ Start Training", key="btn_train_start"):
+        page_train()
+    else:
+        st.info("Click **Start Training** to fit models with the current preprocessing & hyperparameters.")
+
+with _tabs[4]:
+    page_evaluation()
+
+with _tabs[5]:
+    # Single & batch prediction UI (unique keys are already defined inside this function)
+    page_prediction()
+
+
