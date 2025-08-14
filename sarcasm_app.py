@@ -329,20 +329,7 @@ def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), pre
     st.pyplot(fig)
 
 # ==============================
-# Sidebar Navigation
-# ==============================
-st.sidebar.title("📰 Sarcasm Detector")
-st.sidebar.selectbox(
-    "Navigate",
-    [
-        "Data Upload",
-        "Data Preprocessing",
-        "Model Training",
-        "Model Evaluation",
-        "Prediction",
-    ],
-    key="nav_combo_sidebar",
-)
+
 st.sidebar.markdown("---")
 st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
 st.sidebar.markdown("---")
