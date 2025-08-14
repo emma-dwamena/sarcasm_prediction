@@ -21,6 +21,7 @@ import numpy as np
 import hashlib
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
 
 # --- UI helper (session only): stable hash of a list of texts ---
 def _hash_texts(texts):
@@ -279,7 +280,6 @@ def downsample_ratio(X, y, maj_mult=1.0, random_state=42):
 def st_plot_dist(y_before, y_after, title):
 
 def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), preds=("Pred 0","Pred 1")):
-    import matplotlib.pyplot as plt
     fig = plt.figure(figsize=(4.8,4.2))
     ax = plt.gca()
     im = ax.imshow(cm, cmap="viridis")
