@@ -502,7 +502,6 @@ def _safe_auc(y_true, scores):
     except Exception: return float("nan")
 
 def page_evaluation():
-    st.title("Model Evaluation")
     req = ["models", "X_test_emb", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
         st.warning("Train models in **Model Training** first."); return
