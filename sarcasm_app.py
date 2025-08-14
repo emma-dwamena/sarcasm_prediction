@@ -578,7 +578,7 @@ with _tabs[0]:
     <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
         <h2 style="color: #030a0a; text-align: center;">📌 About This App</h2>
         <p style="text-align:center;max-width:900px;margin:0 auto;">
-            This dashboard predicts Sarcasm in Reddit Comments Using ELMo
+            This dashboard predicts Sarcasm in Comments Using ELMo
         </p>
     </div>
     """, unsafe_allow_html=True)
