@@ -1,19 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Sarcasm Detection App — ELMo + Tunable Downsampling + LR/RF + Distribution Charts
----------------------------------------------------------------------------------
-Fix: All preprocessing artifacts (including X_lr_train, y_lr_train, etc.) are created
-and stored **inside page_preprocess()** before being referenced anywhere else.
-This prevents NameError like "X_lr_train is not defined".
-
-Pages:
-1) Data Upload
-2) Data Preprocessing (tunable downsampling ratio + charts)
-3) Model Training
-4) Model Evaluation
-5) Prediction
-"""
-
 import os, io, re, json
 from datetime import datetime
 
