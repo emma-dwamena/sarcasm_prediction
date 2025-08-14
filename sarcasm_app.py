@@ -308,7 +308,6 @@ st.sidebar.markdown("---")
 # Page 1 — Data Upload
 # ==============================
 def page_upload():
-    st.title("Data Upload")
     f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
     if f is not None:
         name = f.name.lower()
@@ -682,7 +681,6 @@ with _tabs[1]:
     page_upload()
 
 with _tabs[2]:
-    st.subheader("Data Preprocessing")
     # Start button to run preprocessing
     if st.button("▶ Start Preprocessing", key="btn_preprocess"):
         page_preprocess()
