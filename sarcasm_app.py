@@ -178,6 +178,20 @@ st.markdown(
 )
 # --- End fixed selector CSS ---
 
+# === Top Navigation (combo) — fixed at the very top via CSS above ===
+page = st.selectbox(
+    "Navigate",
+    [
+        "Data Upload",
+        "Data Preprocessing",
+        "Model Training",
+        "Model Evaluation",
+        "Prediction",
+    ],
+    key="nav_combo_top",
+)
+
+
 
 
 # ==============================
@@ -332,17 +346,6 @@ def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), pre
 # Sidebar Navigation
 # ==============================
 st.sidebar.title("📰 Sarcasm Detector")
-page = st.selectbox(
-    "Navigate",
-    [
-        "Data Upload",
-        "Data Preprocessing",
-        "Model Training",
-        "Model Evaluation",
-        "Prediction",
-    ],
-    key="nav_combo",
-)
 st.sidebar.markdown("---")
 st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
 st.sidebar.markdown("---")
