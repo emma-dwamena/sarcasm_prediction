@@ -1,3 +1,19 @@
+# -*- coding: utf-8 -*-
+"""
+Sarcasm Detection App — ELMo + Tunable Downsampling + LR/RF + Distribution Charts
+---------------------------------------------------------------------------------
+Fix: All preprocessing artifacts (including X_lr_train, y_lr_train, etc.) are created
+and stored **inside page_preprocess()** before being referenced anywhere else.
+This prevents NameError like "X_lr_train is not defined".
+
+Pages:
+1) Data Upload
+2) Data Preprocessing (tunable downsampling ratio + charts)
+3) Model Training
+4) Model Evaluation
+5) Prediction
+"""
+
 import os, io, re, json
 from datetime import datetime
 
@@ -18,21 +34,21 @@ def _hash_texts(texts):
     return m.hexdigest()
 # --- end helper ---
 
-# ELMo embedding with visible progress
+# === UI helper: ELMo embedding with visible progress (no ML changes) ===
 def _embed_with_progress(texts, elmo_module, batch_size=32, label="texts"):
     total = len(texts)
     if total == 0:
         return np.zeros((0, 1024), dtype=np.float32)
-    prog = st.progress(0.0, text=f"Embedding {label} with … 0/{total}")
+    prog = st.progress(0.0, text=f"Embedding {label} with ELMo… 0/{total}")
     out = []
     done = 0
     for i in range(0, total, batch_size):
         chunk = texts[i:i+batch_size]
-        # Use the existing  .embed call to preserve behavior
-        emb = _module.embed(chunk, batch_size=len(chunk))
+        # Use the existing elmo .embed call to preserve behavior
+        emb = elmo_module.embed(chunk, batch_size=len(chunk))
         out.append(emb)
         done = min(i + batch_size, total)
-        prog.progress(done/total, text=f"Embedding {label} with … {done}/{total}")
+        prog.progress(done/total, text=f"Embedding {label} with ELMo… {done}/{total}")
     prog.empty()
     try:
         return np.vstack(out)
@@ -63,8 +79,10 @@ try:
 except Exception:
     TF_OK = False
 
-# Page Config
-st.set_page_config(page_title="Sarcasm Detection", page_icon="📰", layout="wide")
+# ==============================
+# Streamlit: Page Config & Theme
+# ==============================
+st.set_page_config(page_title="Sarcasm Detection (ELMo + LR/RF)", page_icon="📰", layout="wide")
 
 st.markdown(
     """
@@ -146,7 +164,10 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+
+# ==============================
 # Session-State Initialization
+# ==============================
 def _init_state():
     ss = st.session_state
     ss.setdefault("df", None)
@@ -172,7 +193,9 @@ def _init_state():
 
 _init_state()
 
+# ==============================
 # Basic Cleaning
+# ==============================
 _punct_pattern = re.compile(r"[^\w\s]")
 def basic_clean(text, lower=True, remove_punct=True):
     if not isinstance(text, str): return ""
@@ -182,7 +205,9 @@ def basic_clean(text, lower=True, remove_punct=True):
     t = re.sub(r"\s+", " ", t)
     return t
 
+# ==============================
 # ELMo Embedder
+# ==============================
 class ELMoEmbedder:
     def __init__(self, url: str = ELMO_URL):
         if not TF_OK:
@@ -217,7 +242,9 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
             mats.append(vecs)
         return np.vstack(mats)
 
-# Handling Imbalanced Data using Downsampling 
+# ==============================
+# Downsampling (tunable ratio)
+# ==============================
 def downsample_ratio(X, y, maj_mult=1.0, random_state=42):
     """
     Downsample the majority class to achieve majority:minority ≈ maj_mult (>=1.0).
@@ -246,7 +273,9 @@ def downsample_ratio(X, y, maj_mult=1.0, random_state=42):
     rng.shuffle(keep_idx)
     return X[keep_idx], y[keep_idx]
 
+# ==============================
 # Downsampling Distribution Plot
+# ==============================
 def st_plot_dist(y_before, y_after, title):
     import matplotlib.pyplot as plt
     import numpy as np
@@ -284,7 +313,9 @@ def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), pre
     plt.tight_layout()
     st.pyplot(fig)
 
+# ==============================
 # Sidebar Navigation
+# ==============================
 st.sidebar.title("📰 Sarcasm Detector")
 page = st.sidebar.radio("Navigate", [
     "Data Upload",
@@ -294,7 +325,7 @@ page = st.sidebar.radio("Navigate", [
     "Prediction",
 ])
 st.sidebar.markdown("---")
-st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
+st.sidebar.caption("ELMo → Logistic Regression / Random Forest • Precision / Recall / F1 / ROC-AUC")
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     """
@@ -310,6 +341,7 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
+# ==============================
 # Page 1 — Data Upload
 # ==============================
 def page_upload():
@@ -334,7 +366,7 @@ def page_upload():
         except Exception as e:
             st.error(f"Failed to read file: {e}"); return
         st.session_state.df = df.copy()
-        st.success(f"Data loaded successfully! Loaded shape: {df.shape[0]} rows × {df.shape[1]} columns")
+        st.success(f"Loaded shape: {df.shape[0]} rows × {df.shape[1]} columns")
         with st.expander("Preview (first 10 rows)", expanded=True):
             st.dataframe(df.head(10), use_container_width=True)
         cols = list(df.columns)
@@ -345,6 +377,7 @@ def page_upload():
         st.session_state.label_col = st.selectbox("Label column (0/1)", cols, index=cols.index(default_label) if default_label in cols else len(cols)-1)
         st.info("Tip: Common columns are **headline** (text) and **is_sarcastic** (label).")
 
+# ==============================
 # Page 2 — Data Preprocessing
 # ==============================
 def page_preprocess():
@@ -462,6 +495,7 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
     }
     st.success("Preprocessing complete. Proceed to **Model Training**.")
 
+# ==============================
 # Page 3 — Model Training
 # ==============================
 def page_train():
@@ -495,6 +529,7 @@ def page_train():
     st.session_state.models = {"lr": lr, "rf": rf}
     st.success("Training complete. Proceed to **Model Evaluation**.")
 
+# ==============================
 # Page 4 — Model Evaluation
 # ==============================
 def _safe_auc(y_true, scores):
@@ -563,6 +598,7 @@ def page_evaluation():
             plt.plot([0,1],[0,1], linestyle="--"); plt.xlabel("FPR"); plt.ylabel("TPR"); plt.title("ROC Curves"); plt.legend(loc="lower right")
             st.pyplot(fig)
 
+# ==============================
 # Page 5 — Prediction
 # ==============================
 def page_prediction():
@@ -607,6 +643,8 @@ def page_prediction():
             out.to_csv(out_path, index=False)
             st.success(f"Done. Saved to {out_path}")
             st.download_button("Download predictions CSV", data=out.to_csv(index=False).encode(), file_name=out_path, mime="text/csv")
+
+# ==============================
 # Router
 # ==============================
 st.sidebar.markdown("---")
