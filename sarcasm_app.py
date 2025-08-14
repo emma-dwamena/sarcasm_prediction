@@ -274,12 +274,10 @@ def downsample_ratio(X, y, maj_mult=1.0, random_state=42):
     return X[keep_idx], y[keep_idx]
 
 # ==============================
-# Downsampling Distribution Plot
+
 # ==============================
 def st_plot_dist(y_before, y_after, title):
-    import matplotlib.pyplot as plt
-    import numpy as np
-    y_before = np.asarray(y_before).astype(int)
+
     y_after  = np.asarray(y_after).astype(int)
     def _counts(y):
         c = np.bincount(y, minlength=2)[:2]
@@ -295,23 +293,10 @@ def st_plot_dist(y_before, y_after, title):
     for i, v in enumerate([c0a, c1a]): plt.text(x[i] + width/2, v, str(v), ha='center', va='bottom')
     plt.xticks(x, labels); plt.ylabel("Count"); plt.title(title); plt.legend(loc="best"); plt.tight_layout()
     st.pyplot(fig)
+
 def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), preds=("Pred 0","Pred 1")):
-    import matplotlib.pyplot as plt
-    fig = plt.figure(figsize=(4.8,4.2))
-    ax = plt.gca()
-    im = ax.imshow(cm, cmap="viridis")
-    ax.set_title(title)
-    ax.set_xlabel("Predicted")
-    ax.set_ylabel("Actual")
-    ax.set_xticks([0,1]); ax.set_xticklabels(list(preds))
-    ax.set_yticks([0,1]); ax.set_yticklabels(list(labels))
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            ax.text(j, i, str(int(cm[i, j])), ha="center", va="center",
-                    color="white" if cm[i,j] > cm.max()/2 else "black")
-    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    plt.tight_layout()
-    st.pyplot(fig)
+
+    y_after  = np.asarray(y_after).astype(int)
     def _counts(y):
         c = np.bincount(y, minlength=2)[:2]
         return int(c[0]), int(c[1])
