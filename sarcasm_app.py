@@ -66,7 +66,7 @@ except Exception:
 # ==============================
 # Streamlit: Page Config & Theme
 # ==============================
-st.set_page_config(page_title="Sarcasm Detection (ELMo + LR/RF)", page_icon="📰", layout="wide")
+st.set_page_config(page_title="Sarcasm Detection", page_icon="📰", layout="wide")
 
 
 
@@ -226,19 +226,6 @@ st.sidebar.title("📰 Sarcasm Detector")
 st.sidebar.markdown("---")
 st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
 st.sidebar.markdown("---")
-st.sidebar.markdown(
-    """
-    <div style='font-size:12px; line-height:1.3;'>
-    Erwin K. Opare-Essel - 22254064<br>
-    Emmanuel Oduro Dwamena - 11410636<br>
-    Elizabeth Afranewaa Abayateye - 22252474<br>
-    Elien Samira Osumanu - 11410414<br>
-    Innocent Arkaah- 11410788<br>
-    Sheena Pognaa Dasoberi - 22252392
-    </div>
-    """,
-    unsafe_allow_html=True
-)
 
 # ==============================
 # Page 1 — Data Upload
@@ -591,8 +578,7 @@ with _tabs[0]:
     <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
         <h2 style="color: #030a0a; text-align: center;">📌 About This App</h2>
         <p style="text-align:center;max-width:900px;margin:0 auto;">
-            This dashboard predicts customer churn and provides EDA, preprocessing,
-            model training and evaluation.
+            This dashboard predicts Sarcasm in Reddit Comments Using ELMo
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -601,11 +587,12 @@ with _tabs[0]:
     <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
         <h2 style="color: #030a0a; text-align: center;">👥 Group 7 Team Members</h2>
         <div style="display: flex; justify-content: space-around; flex-wrap: wrap;">
-            <div>• Ruth Mensah - 22253087</div>
+            <div>• Erwin K. Opare-Essel - 22254064</div>
             <div>• Emmanuel Oduro Dwamena - 11410636</div>
-            <div>• Zoe Akua Ohene-Ampofo - 22252412</div>
-            <div>• Sandra Animwaa Bamfo - 22256394</div>
-            <div>• Joshua Kwaku Mensah - 22257672</div>
+            <div>• Elizabeth Afranewaa Abayateye - 22252474</div>
+            <div>• Elien Samira Osumanu - 11410414</div>
+            <div>• Innocent Arkaah- 11410788</div>
+            <div>• Sheena Pognaa Dasoberi - 22252392</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
