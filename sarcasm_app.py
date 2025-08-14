@@ -276,9 +276,10 @@ def downsample_ratio(X, y, maj_mult=1.0, random_state=42):
 # ==============================
 
 # ==============================
-def st_plot_dist(y_before, y_after, title):
 
-    y_after  = np.asarray(y_after).astype(int)
+def st_plot_dist(y_before, y_after, title):
+    """Bar chart: class counts before vs after downsampling (Streamlit)."""
+
     def _counts(y):
         c = np.bincount(y, minlength=2)[:2]
         return int(c[0]), int(c[1])
@@ -293,10 +294,8 @@ def st_plot_dist(y_before, y_after, title):
     for i, v in enumerate([c0a, c1a]): plt.text(x[i] + width/2, v, str(v), ha='center', va='bottom')
     plt.xticks(x, labels); plt.ylabel("Count"); plt.title(title); plt.legend(loc="best"); plt.tight_layout()
     st.pyplot(fig)
-
 def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), preds=("Pred 0","Pred 1")):
 
-    y_after  = np.asarray(y_after).astype(int)
     def _counts(y):
         c = np.bincount(y, minlength=2)[:2]
         return int(c[0]), int(c[1])
