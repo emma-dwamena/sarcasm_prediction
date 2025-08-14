@@ -148,6 +148,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+st.sidebar.title("📰 Sarcasm Detector")
 
 # ==============================
 # Session-State Initialization
