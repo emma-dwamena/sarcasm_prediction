@@ -462,6 +462,7 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
 # Page 3 — Model Training
 # ==============================
 def page_train():
+    
     st.title("Model Training")
     required = ["X_train_emb", "X_test_emb", "y_train", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in required):
@@ -478,26 +479,25 @@ def page_train():
         max_depth = st.number_input("RandomForest max_depth (0=None)", 0, 100, 0, step=1)
         max_depth = None if max_depth == 0 else int(max_depth)
 
-    colA, colB = st.columns(2)
-    with colA:
-        with st.spinner("Training Logistic Regression…"):
-            lr = LogisticRegression(C=C, solver="liblinear", random_state=st.session_state.random_state)
-            lr.fit(X_lr_train, y_lr_train)
-    with colB:
-        with st.spinner("Training Random Forest…"):
-            rf = RandomForestClassifier(n_estimators=int(n_estimators), max_depth=max_depth,
-                                        random_state=st.session_state.random_state, n_jobs=-1)
-            rf.fit(X_rf_train, y_rf_train)
+    # Only start training when the user clicks the button
+    if st.button("▶ Train Model", key="btn_train_go"):
+        colA, colB = st.columns(2)
+        with colA:
+            with st.spinner("Training Logistic Regression…"):
+                lr = LogisticRegression(C=C, solver="liblinear", random_state=st.session_state.random_state)
+                lr.fit(X_lr_train, y_lr_train)
+        with colB:
+            with st.spinner("Training Random Forest…"):
+                rf = RandomForestClassifier(n_estimators=int(n_estimators), max_depth=max_depth,
+                                            random_state=st.session_state.random_state, n_jobs=-1)
+                rf.fit(X_rf_train, y_rf_train)
 
-    st.session_state.models = {"lr": lr, "rf": rf}
-    st.success("Training complete. Proceed to **Model Evaluation**.")
-
-# ==============================
-# Page 4 — Model Evaluation
-# ==============================
-def _safe_auc(y_true, scores):
-    try: return roc_auc_score(y_true, scores)
-    except Exception: return float("nan")
+        st.session_state.models = {"lr": lr, "rf": rf}
+        st.success("Training complete. Proceed to **Model Evaluation**.")
+    else:
+        if st.session_state.get("models"):
+            st.success("Models already trained. Adjust hyperparameters and click **Train Model** to retrain.")
+        st.info("Adjust hyperparameters above, then click **Train Model**.")
 
 def page_evaluation():
     st.title("Model Evaluation")
@@ -684,13 +684,7 @@ with _tabs[2]:
         st.success("Preprocessing complete. Click the button to re-run if needed.")
 
 with _tabs[3]:
-    st.subheader("Model Training")
-    # Start button to train models
-    if st.button("▶ Train Model", key="btn_train"):
-        page_train()
-    elif st.session_state.get("models"):
-        st.success("Models already trained. Click the button to retrain.")
-
+    page_train()
 with _tabs[4]:
     st.subheader("Model Evaluation")
     # Start button to evaluate models
