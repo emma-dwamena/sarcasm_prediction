@@ -227,7 +227,7 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
         return np.vstack(mats)
 
 # ==============================
-# Downsampling (tunable ratio)
+# Handling Imbalance - Downsampling
 # ==============================
 def downsample_ratio(X, y, maj_mult=1.0, random_state=42):
     """
@@ -365,7 +365,7 @@ def page_upload():
 # Page 2 — Data Preprocessing
 # ==============================
 def page_preprocess():
-    st.title("Data Preprocessing — Tunable Downsampling + Charts")
+    st.title("Data Preprocessing")
     if st.session_state.df is None:
         st.warning("Please upload a dataset in **Data Upload**."); return
     df = st.session_state.df.copy()
