@@ -500,7 +500,6 @@ def page_evaluation():
 # ==============================
 # Page 5 — Prediction
 # ==============================
-def page_prediction():
     st.title("Prediction")
     req = ["models", "scaler", "elmo"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
@@ -615,7 +614,4 @@ with _tabs[6]:
 
 with _tabs[7]:
     st.title("Batch Prediction")
-    st.write("Use the Prediction Interface tab to upload a CSV for batch scoring.")
-    # Optionally, also show the prediction page again for convenience
-    page_prediction()
-
+    st.write("Use the **Prediction Interface** tab to upload a CSV for batch scoring.")
