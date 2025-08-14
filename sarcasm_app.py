@@ -669,13 +669,28 @@ with _tabs[1]:
     page_upload()
 
 with _tabs[2]:
-    page_preprocess()
+    st.subheader("Data Preprocessing")
+    # Start button to run preprocessing
+    if st.button("▶ Start Preprocessing", key="btn_preprocess"):
+        page_preprocess()
+    elif st.session_state.get("prep_cache") is not None:
+        st.success("Preprocessing complete. Click the button to re-run if needed.")
 
 with _tabs[3]:
-    page_train()
+    st.subheader("Model Training")
+    # Start button to train models
+    if st.button("▶ Train Model", key="btn_train"):
+        page_train()
+    elif st.session_state.get("models"):
+        st.success("Models already trained. Click the button to retrain.")
 
 with _tabs[4]:
-    page_evaluation()
+    st.subheader("Model Evaluation")
+    # Start button to evaluate models
+    if st.button("▶ Evaluate Model", key="btn_eval"):
+        page_evaluation()
+    elif st.session_state.get("models"):
+        st.info("Click **Evaluate Model** to compute metrics and plots.")
 
 with _tabs[5]:
     page_prediction()
