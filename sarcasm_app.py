@@ -149,37 +149,6 @@ st.markdown(
 )
 
 
-# --- Fixed top page selector (UI-only; no ML changes) ---
-st.markdown(
-    """
-    <style>
-    /* Pin the first selectbox (our page nav) to the very top */
-    div[data-testid='stSelectbox']:first-of-type {
-        position: fixed; top: 0; left: 0; right: 0; width: 100%;
-        z-index: 10000;
-        background: var(--panel);
-        border-bottom: 1px solid var(--border);
-        box-shadow: 0 2px 6px rgba(0,0,0,.06);
-        padding: .35rem .6rem .5rem .6rem;
-        margin: 0 !important;
-    }
-    /* Ensure the label stays visible inline */
-    div[data-testid='stSelectbox']:first-of-type label p {
-        margin-bottom: 0 !important;
-        font-weight: 600;
-    }
-    /* Offset content so it doesn't hide under the fixed selector */
-    .block-container { padding-top: 4.8rem; }
-    /* Keep Streamlit header/menu above if present */
-    header[data-testid='stHeader'] { z-index: 10100; }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-# --- End fixed selector CSS ---
-
-
-
 # ==============================
 # Session-State Initialization
 # ==============================
