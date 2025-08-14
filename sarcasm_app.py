@@ -63,7 +63,7 @@ try:
 except Exception:
     TF_OK = False
 
-Page Config
+# Page Config
 st.set_page_config(page_title="Sarcasm Detection (ELMo + LR/RF)", page_icon="📰", layout="wide")
 
 st.markdown(
