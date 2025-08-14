@@ -178,53 +178,6 @@ st.markdown(
 )
 # --- End fixed selector CSS ---
 
-# === Sticky Top Tabs Navigation ===
-# Reset the large padding added for the old fixed selectbox and make tabs sticky
-st.markdown(
-    """
-    <style>
-    /* Reduce top padding introduced earlier */
-    .block-container { padding-top: 1rem !important; }
-    /* Make the first tab bar sticky */
-    div[data-testid="stTabs"] > div[role="tablist"] {
-        position: sticky;
-        top: 0;
-        z-index: 10100;
-        background: var(--background-color);
-        padding-top: .25rem;
-        padding-bottom: .25rem;
-        margin-top: -.25rem;
-        border-bottom: 1px solid rgba(49,51,63,0.2);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# Define tabs matching the app sections
-_nav_tabs = st.tabs([
-    "Data Upload",
-    "Data Preprocessing",
-    "Model Training",
-    "Model Evaluation",
-    "Prediction"
-])
-
-# Ensure legacy routing doesn't render a second copy
-page = "__tabs_nav__"
-
-with _nav_tabs[0]:
-    page_upload()
-with _nav_tabs[1]:
-    page_preprocess()
-with _nav_tabs[2]:
-    page_train()
-with _nav_tabs[3]:
-    page_evaluation()
-with _nav_tabs[4]:
-    page_prediction()
-
-
 # === Top Navigation (Combo) — fixed at the very top via the CSS above ===
 st.sidebar.selectbox(
     "Navigate",
@@ -736,8 +689,51 @@ except NameError:
     page = st.session_state.get('nav_combo_top') or st.session_state.get('nav_combo_sidebar') or 'Data Upload'
 
 
-if page == "Data Upload":   page_upload()
-elif page == "Data Preprocessing": page_preprocess()
-elif page == "Model Training": page_train()
-elif page == "Model Evaluation": page_evaluation()
-elif page == "Prediction": page_prediction()
+
+# === Sticky Top Tabs Navigation (like the screenshot) ===
+st.markdown(
+    """
+    <style>
+    div[data-testid="stTabs"] > div[role="tablist"] {
+        position: sticky;
+        top: 0;
+        z-index: 10100;
+        background: var(--background-color);
+        border-bottom: 1px solid rgba(49,51,63,0.2);
+    }
+    .block-container { padding-top: 1rem !important; }
+    </style>
+    """
+    ,
+    unsafe_allow_html=True,
+)
+
+_tab_labels = [
+    "About",
+    "Home & Data Overview",
+    "Data Preprocessing",
+    "Model Training",
+    "Model Evaluation",
+    "Prediction Interface",
+]
+_tabs = st.tabs(_tab_labels)
+
+with _tabs[0]:
+    st.markdown("### About")
+    st.write("This interface provides data upload/overview, preprocessing, model training & evaluation, and a prediction interface.")
+
+with _tabs[1]:
+    page_upload()
+
+with _tabs[2]:
+    page_preprocess()
+
+with _tabs[3]:
+    page_train()
+
+with _tabs[4]:
+    page_evaluation()
+
+with _tabs[5]:
+    page_prediction()
+
