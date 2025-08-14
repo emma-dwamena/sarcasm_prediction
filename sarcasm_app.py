@@ -344,7 +344,6 @@ def page_upload():
 # Page 2 — Data Preprocessing
 # ==============================
 def page_preprocess():
-    st.title("Data Preprocessing")
     if st.session_state.df is None:
         st.warning("Please upload a dataset in **Data Upload**."); return
     df = st.session_state.df.copy()
