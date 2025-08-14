@@ -21,7 +21,6 @@ import numpy as np
 import hashlib
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
 
 # --- UI helper (session only): stable hash of a list of texts ---
 def _hash_texts(texts):
@@ -278,8 +277,8 @@ def downsample_ratio(X, y, maj_mult=1.0, random_state=42):
 # Downsampling Distribution Plot
 # ==============================
 def st_plot_dist(y_before, y_after, title):
-    """Bar chart: class counts before vs after downsampling (Streamlit)."""
     import matplotlib.pyplot as plt
+    import numpy as np
     y_before = np.asarray(y_before).astype(int)
     y_after  = np.asarray(y_after).astype(int)
     def _counts(y):
@@ -296,8 +295,8 @@ def st_plot_dist(y_before, y_after, title):
     for i, v in enumerate([c0a, c1a]): plt.text(x[i] + width/2, v, str(v), ha='center', va='bottom')
     plt.xticks(x, labels); plt.ylabel("Count"); plt.title(title); plt.legend(loc="best"); plt.tight_layout()
     st.pyplot(fig)
-
 def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), preds=("Pred 0","Pred 1")):
+    import matplotlib.pyplot as plt
     fig = plt.figure(figsize=(4.8,4.2))
     ax = plt.gca()
     im = ax.imshow(cm, cmap="viridis")
@@ -466,31 +465,27 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
             except Exception as e:
                 st.error(f"Failed to load ELMo: {e}"); return
         st.success("ELMo loaded.")
-
     bsz = 32
-# --- Session-cached ELMo embeddings (UI/session only) ---
-st.session_state.setdefault("X_train_key", None)
-st.session_state.setdefault("X_test_key", None)
-key_train = hashlib.md5("
-".join(list(X_train)).encode("utf-8")).hexdigest()
-key_test  = hashlib.md5("
-".join(list(X_test)).encode("utf-8")).hexdigest()
-reuse_train = (st.session_state.X_train_emb is not None and st.session_state.get("X_train_key") == key_train)
-reuse_test  = (st.session_state.X_test_emb is not None and st.session_state.get("X_test_key") == key_test)
-if reuse_train:
-    X_train_emb = st.session_state.X_train_emb
-else:
-    X_train_emb = _embed_with_progress(X_train, st.session_state.elmo, batch_size=bsz, label="training texts")
-    st.session_state.X_train_emb = X_train_emb
-    st.session_state.X_train_key = key_train
-if reuse_test:
-    X_test_emb = st.session_state.X_test_emb
-else:
-    X_test_emb = _embed_with_progress(X_test, st.session_state.elmo, batch_size=bsz, label="test texts")
-    st.session_state.X_test_emb = X_test_emb
-    st.session_state.X_test_key = key_test
-# --- End session-cached embeddings ---
-
+    # --- Session-cached ELMo embeddings (UI/session only) ---
+    st.session_state.setdefault("X_train_key", None)
+    st.session_state.setdefault("X_test_key", None)
+    key_train = _hash_texts(X_train)
+    key_test  = _hash_texts(X_test)
+    reuse_train = (st.session_state.X_train_emb is not None and st.session_state.get("X_train_key") == key_train)
+    reuse_test  = (st.session_state.X_test_emb is not None and st.session_state.get("X_test_key") == key_test)
+    if reuse_train:
+        X_train_emb = st.session_state.X_train_emb
+    else:
+        X_train_emb = _embed_with_progress(X_train, st.session_state.elmo, batch_size=bsz, label="training texts")
+        st.session_state.X_train_emb = X_train_emb
+        st.session_state.X_train_key = key_train
+    if reuse_test:
+        X_test_emb = st.session_state.X_test_emb
+    else:
+        X_test_emb = _embed_with_progress(X_test, st.session_state.elmo, batch_size=bsz, label="test texts")
+        st.session_state.X_test_emb = X_test_emb
+        st.session_state.X_test_key = key_test
+    # --- End session-cached embeddings ---
     scaler = StandardScaler()
     X_train_std = scaler.fit_transform(X_train_emb)
     X_test_std  = scaler.transform(X_test_emb)
