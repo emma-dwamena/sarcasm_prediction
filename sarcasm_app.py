@@ -583,6 +583,8 @@ _tab_labels = [
     "Model Training",
     "Model Evaluation",
     "Prediction Interface",
+    "Insights & Conclusions",
+    "Batch Prediction",
 ]
 _tabs = st.tabs(_tab_labels)
 
@@ -595,18 +597,10 @@ with _tabs[1]:
     page_upload()
 
 with _tabs[2]:
-    st.subheader("Data Preprocessing")
-    if st.button("▶ Start Preprocessing", key="btn_preprocess_start"):
-        page_preprocess()
-    else:
-        st.info("Click **Start Preprocessing** to begin. This keeps your settings visible before running.")
+    page_preprocess()
 
 with _tabs[3]:
-    st.subheader("Model Training")
-    if st.button("▶ Start Training", key="btn_train_start"):
-        page_train()
-    else:
-        st.info("Click **Start Training** to fit models with the current preprocessing & hyperparameters.")
+    page_train()
 
 with _tabs[4]:
     page_evaluation()
@@ -615,4 +609,11 @@ with _tabs[5]:
     # Single & batch prediction UI (unique keys are already defined inside this function)
     page_prediction()
 
+with _tabs[6]:
+    st.title("Insights & Conclusions")
+    st.info("Summarize key findings and next steps here.")
+
+with _tabs[7]:
+    st.title("Batch Prediction")
+    st.write("Use the **Prediction Interface** tab to upload a CSV for batch scoring.")
 
