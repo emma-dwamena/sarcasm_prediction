@@ -309,7 +309,7 @@ page = st.sidebar.radio("Navigate", [
     "Prediction",
 ])
 st.sidebar.markdown("---")
-st.sidebar.caption("ELMo → Logistic Regression / Random Forest • Precision / Recall / F1 / ROC-AUC")
+st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     """
