@@ -689,7 +689,7 @@ except NameError:
     page = st.session_state.get('nav_combo_top') or st.session_state.get('nav_combo_sidebar') or 'Data Upload'
 
 
-if page == \"Data Upload\":   page_upload()
+if page == "Data Upload":   page_upload()
 elif page == "Data Preprocessing": page_preprocess()
 elif page == "Model Training": page_train()
 elif page == "Model Evaluation": page_evaluation()
