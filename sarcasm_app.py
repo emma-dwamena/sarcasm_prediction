@@ -178,8 +178,7 @@ st.markdown(
 )
 # --- End fixed selector CSS ---
 
-# === Top Navigation (Combo) — fixed at the very top ===
-# Uses the CSS above which fixes the *first* selectbox at the top
+# === Top Navigation (Combo) — fixed at the very top via the CSS above ===
 st.sidebar.selectbox(
     "Navigate",
     [
@@ -682,7 +681,15 @@ def page_prediction():
 # Router
 # ==============================
 st.sidebar.markdown("---")
-if page == "Data Upload":   page_upload()
+
+# --- Safety fallback: ensure `page` exists even if top combo didn't render ---
+try:
+    page
+except NameError:
+    page = st.session_state.get('nav_combo_top') or st.session_state.get('nav_combo_sidebar') or 'Data Upload'
+
+
+if page == \"Data Upload\":   page_upload()
 elif page == "Data Preprocessing": page_preprocess()
 elif page == "Model Training": page_train()
 elif page == "Model Evaluation": page_evaluation()
