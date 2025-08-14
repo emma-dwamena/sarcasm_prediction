@@ -500,6 +500,7 @@ def page_evaluation():
 # ==============================
 # Page 5 — Prediction
 # ==============================
+def page_prediction():
     st.title("Prediction")
     req = ["models", "scaler", "elmo"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
@@ -592,7 +593,7 @@ with _tabs[0]:
     st.markdown("This app demonstrates sarcasm detection with ELMo embeddings + Logistic Regression & Random Forest.")
 
 with _tabs[1]:
-    # Map to your existing data upload/overview page
+    # Your original 'home/data' page
     page_upload()
 
 with _tabs[2]:
@@ -605,68 +606,14 @@ with _tabs[4]:
     page_evaluation()
 
 with _tabs[5]:
-    # Prediction interface (single/batch lives here already)
+    # Single & batch prediction UI (unique keys are already defined inside this function)
     page_prediction()
 
 with _tabs[6]:
     st.title("Insights & Conclusions")
-    st.info("Use this space to summarize findings after evaluating models.")
+    st.info("Summarize key findings and next steps here.")
 
 with _tabs[7]:
     st.title("Batch Prediction")
     st.write("Use the **Prediction Interface** tab to upload a CSV for batch scoring.")
-
-# ---- Injected from original app: page_prediction ----
-def page_prediction():
-    st.title("Prediction")
-    req = ["models", "scaler", "elmo"]
-    if not all(k in st.session_state and st.session_state[k] is not None for k in req):
-        st.warning("Please complete **Training** before predicting."); return
-    models = st.session_state.models; scaler = st.session_state.scaler; elmo = st.session_state.elmo
-    threshold = st.session_state.get("threshold", 0.5)
-
-    tab_single, tab_batch = st.tabs(["Single Text", "Batch Upload"])
-    with tab_single:
-        text = st.text_area("Enter headline / text", height=120, placeholder="e.g., 'Scientists discover water on the Sun (sure).'" )
-        if st.button("Predict"):
-            if not text.strip(): st.warning("Enter some text.")
-            else:
-                emb = elmo.embed([text]); x_std = scaler.transform(emb)
-                lr_p = models["lr"].predict_proba(x_std)[:,1][0]; rf_p = models["rf"].predict_proba(emb)[:,1][0]
-                lr_pred = int(lr_p >= threshold); rf_pred = int(rf_p >= threshold)
-                c1, c2 = st.columns(2)
-                with c1: st.metric("Logistic Regression", f"{'Sarcastic' if lr_pred else 'Not Sarcastic'}", delta=f"P={lr_p:.3f}")
-                with c2: st.metric("Random Forest", f"{'Sarcastic' if rf_pred else 'Not Sarcastic'}", delta=f"P={rf_p:.3f}")
-
-    with tab_batch:
-        st.write("Upload a CSV for batch predictions.")
-        bf = st.file_uploader("Upload CSV", type=["csv","txt"], key="batch_csv")
-        text_col_name = st.text_input("Text column name in CSV", value=st.session_state.text_col or "headline")
-        if bf is not None:
-            try: bdf = pd.read_csv(bf)
-            except Exception as e: st.error(f"Could not read CSV: {e}"); return
-            if text_col_name not in bdf.columns:
-                st.error(f"Column '{text_col_name}' not in CSV."); return
-            with st.spinner("Embedding and predicting…"):
-                texts = bdf[text_col_name].astype(str).tolist()
-                emb = elmo.embed(texts, batch_size=32); x_std = scaler.transform(emb)
-                lr_prob = models["lr"].predict_proba(x_std)[:,1]; rf_prob = models["rf"].predict_proba(emb)[:,1]
-                lr_pred = (lr_prob >= threshold).astype(int); rf_pred = (rf_prob >= threshold).astype(int)
-                out = bdf.copy()
-                out["proba_lr"] = lr_prob; out["pred_lr"] = lr_pred
-                out["proba_rf"] = rf_prob; out["pred_rf"] = rf_pred
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S"); out_path = f"sarcasm_predictions_{ts}.csv"
-            out.to_csv(out_path, index=False)
-            st.success(f"Done. Saved to {out_path}")
-            st.download_button("Download predictions CSV", data=out.to_csv(index=False).encode(), file_name=out_path, mime="text/csv")
-
-# ==============================
-# Router
-# ==============================
-st.sidebar.markdown("---")
-if page == "Data Upload":   page_upload()
-elif page == "Data Preprocessing": page_preprocess()
-elif page == "Model Training": page_train()
-elif page == "Model Evaluation": page_evaluation()
-elif page == "Prediction": page_prediction()
 
