@@ -178,21 +178,6 @@ st.markdown(
 )
 # --- End fixed selector CSS ---
 
-# === Top Navigation (Combo) — fixed at the very top via the CSS above ===
-st.sidebar.selectbox(
-    "Navigate",
-    [
-        "Data Upload",
-        "Data Preprocessing",
-        "Model Training",
-        "Model Evaluation",
-        "Prediction",
-    ],
-    key="nav_combo_top",
-)
-
-
-
 
 # ==============================
 # Session-State Initialization
