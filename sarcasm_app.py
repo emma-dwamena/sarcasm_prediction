@@ -312,10 +312,6 @@ def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), pre
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     plt.tight_layout()
     st.pyplot(fig)
-    """Bar chart: class counts before vs after downsampling (Streamlit)."""
-    import matplotlib.pyplot as plt
-    y_before = np.asarray(y_before).astype(int)
-    y_after  = np.asarray(y_after).astype(int)
     def _counts(y):
         c = np.bincount(y, minlength=2)[:2]
         return int(c[0]), int(c[1])
