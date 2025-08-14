@@ -587,8 +587,28 @@ _tab_labels = [
 _tabs = st.tabs(_tab_labels)
 
 with _tabs[0]:
-    st.title("About")
-    st.markdown("This app demonstrates sarcasm detection with ELMo embeddings + Logistic Regression & Random Forest.")
+    st.markdown("""
+    <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
+        <h2 style="color: #030a0a; text-align: center;">📌 About This App</h2>
+        <p style="text-align:center;max-width:900px;margin:0 auto;">
+            This dashboard predicts customer churn and provides EDA, preprocessing,
+            model training and evaluation.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
+        <h2 style="color: #030a0a; text-align: center;">👥 Group 7 Team Members</h2>
+        <div style="display: flex; justify-content: space-around; flex-wrap: wrap;">
+            <div>• Ruth Mensah - 22253087</div>
+            <div>• Emmanuel Oduro Dwamena - 11410636</div>
+            <div>• Zoe Akua Ohene-Ampofo - 22252412</div>
+            <div>• Sandra Animwaa Bamfo - 22256394</div>
+            <div>• Joshua Kwaku Mensah - 22257672</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 with _tabs[1]:
     # Your original 'home/data' page
