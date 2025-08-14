@@ -606,14 +606,14 @@ with _tabs[2]:
     if st.button("▶ Start Preprocessing", key="btn_preprocess_start"):
         page_preprocess()
     else:
-        st.info("Click **Start Preprocessing** to begin. This keeps your settings visible before running.")
+        st.info("Click **Start Preprocessing** to begin.")
 
 with _tabs[3]:
     st.subheader("Model Training")
     if st.button("▶ Start Training", key="btn_train_start"):
         page_train()
     else:
-        st.info("Click **Start Training** to fit models with the current preprocessing & hyperparameters.")
+        st.info("Click **Start Training** to train models with the current preprocessing & hyperparameters.")
 
 with _tabs[4]:
     page_evaluation()
