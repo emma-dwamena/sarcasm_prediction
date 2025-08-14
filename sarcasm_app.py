@@ -405,7 +405,7 @@ def page_training():
 # ----------------------------
 # Page 4 — Model Evaluation
 # ----------------------------
-\1    # --- Safety guard: ensure models & artifacts exist before evaluation ---
+    # --- Safety guard: ensure models & artifacts exist before evaluation ---
     ss = st.session_state
     _models = ss.get('models')
     missing = []
