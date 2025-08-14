@@ -23,16 +23,16 @@ def _embed_with_progress(texts, elmo_module, batch_size=32, label="texts"):
     total = len(texts)
     if total == 0:
         return np.zeros((0, 1024), dtype=np.float32)
-    prog = st.progress(0.0, text=f"Embedding {label} with ELMo… 0/{total}")
+    prog = st.progress(0.0, text=f"Embedding {label} with … 0/{total}")
     out = []
     done = 0
     for i in range(0, total, batch_size):
         chunk = texts[i:i+batch_size]
-        # Use the existing elmo .embed call to preserve behavior
-        emb = elmo_module.embed(chunk, batch_size=len(chunk))
+        # Use the existing  .embed call to preserve behavior
+        emb = _module.embed(chunk, batch_size=len(chunk))
         out.append(emb)
         done = min(i + batch_size, total)
-        prog.progress(done/total, text=f"Embedding {label} with ELMo… {done}/{total}")
+        prog.progress(done/total, text=f"Embedding {label} with … {done}/{total}")
     prog.empty()
     try:
         return np.vstack(out)
@@ -64,7 +64,7 @@ except Exception:
     TF_OK = False
 
 # Page Config
-st.set_page_config(page_title="Sarcasm Detection (ELMo + LR/RF)", page_icon="📰", layout="wide")
+st.set_page_config(page_title="Sarcasm Detection", page_icon="📰", layout="wide")
 
 st.markdown(
     """
@@ -294,7 +294,7 @@ page = st.sidebar.radio("Navigate", [
     "Prediction",
 ])
 st.sidebar.markdown("---")
-st.sidebar.caption("ELMo → Logistic Regression / Random Forest • Precision / Recall / F1 / ROC-AUC")
+st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     """
