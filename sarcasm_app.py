@@ -334,7 +334,7 @@ def page_upload():
         except Exception as e:
             st.error(f"Failed to read file: {e}"); return
         st.session_state.df = df.copy()
-        st.success(f"Loaded shape: {df.shape[0]} rows × {df.shape[1]} columns")
+        st.success(f"Data loaded successfully! Loaded shape: {df.shape[0]} rows × {df.shape[1]} columns")
         with st.expander("Preview (first 10 rows)", expanded=True):
             st.dataframe(df.head(10), use_container_width=True)
         cols = list(df.columns)
