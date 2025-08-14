@@ -301,13 +301,35 @@ def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), pre
 # Sidebar Navigation
 # ==============================
 st.sidebar.title("📰 Sarcasm Detector")
-page = st.sidebar.radio("Navigate", [
-    "Data Upload",
-    "Data Preprocessing",
-    "Model Training",
-    "Model Evaluation",
-    "Prediction",
-])
+
+# --- Top fixed navigation (combo) ---
+st.markdown(
+    """
+    <style>
+    /* Fix the FIRST selectbox (navigation) to the very top */
+    div[data-testid="stSelectbox"]:first-of-type {
+        position: fixed; top: 0; left: 0; right: 0;
+        z-index: 10000;
+        background: var(--panel);
+        padding: 0.6rem 1rem;
+        border-bottom: 1px solid var(--border);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+    /* Make room for the fixed nav so content isn't hidden */
+    .block-container { padding-top: 5.2rem; }
+    /* Optional: emphasize the label a bit */
+    div[data-testid="stSelectbox"]:first-of-type label { margin-bottom: 0.2rem; font-weight: 600; }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+page = st.selectbox(
+    "Navigate",
+    ["Data Upload", "Data Preprocessing", "Model Training", "Model Evaluation", "Prediction"],
+    key="nav_select"
+)
+
 st.sidebar.markdown("---")
 st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
 st.sidebar.markdown("---")
