@@ -66,7 +66,7 @@ except Exception:
 # ==============================
 # Streamlit: Page Config & Theme
 # ==============================
-st.set_page_config(page_title="Sarcasm Detection", page_icon="📰", layout="wide")
+st.set_page_config(page_title="Sarcasm Detection (ELMo + LR/RF)", page_icon="📰", layout="wide")
 
 
 
@@ -226,6 +226,19 @@ st.sidebar.title("📰 Sarcasm Detector")
 st.sidebar.markdown("---")
 st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
 st.sidebar.markdown("---")
+st.sidebar.markdown(
+    """
+    <div style='font-size:12px; line-height:1.3;'>
+    Erwin K. Opare-Essel - 22254064<br>
+    Emmanuel Oduro Dwamena - 11410636<br>
+    Elizabeth Afranewaa Abayateye - 22252474<br>
+    Elien Samira Osumanu - 11410414<br>
+    Innocent Arkaah- 11410788<br>
+    Sheena Pognaa Dasoberi - 22252392
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ==============================
 # Page 1 — Data Upload
@@ -423,6 +436,19 @@ def _safe_auc(y_true, scores):
     except Exception: return float("nan")
 
 def page_evaluation():
+    # --- Safety guard: ensure artifacts exist before evaluation (UI-only) ---
+    ss = st.session_state
+    _models = ss.get('models')
+    if not isinstance(_models, dict) or 'lr' not in _models or 'rf' not in _models:
+        st.warning('Models not found. Go to **Model Training** and click **Start Training** after preprocessing.')
+        return
+    if ss.get('X_test_emb') is None or ss.get('y_test') is None:
+        st.warning('Test embeddings/labels missing. Complete **Data Preprocessing** first.')
+        return
+    if ss.get('scaler') is None:
+        st.warning('Scaler missing (for LR). Re-run **Data Preprocessing** to create it.')
+        return
+    # --- End guard ---
     st.title("Model Evaluation")
     req = ["models", "X_test_emb", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
@@ -570,50 +596,24 @@ _tab_labels = [
     "Model Training",
     "Model Evaluation",
     "Prediction Interface",
+    "Insights & Conclusions",
+    "Batch Prediction",
 ]
 _tabs = st.tabs(_tab_labels)
 
 with _tabs[0]:
-    st.markdown("""
-    <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
-        <h2 style="color: #030a0a; text-align: center;">📌 About This App</h2>
-        <p style="text-align:center;max-width:900px;margin:0 auto;">
-            This dashboard predicts Sarcasm in Comments Using ELMo
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
-        <h2 style="color: #030a0a; text-align: center;">👥 Group 7 Team Members</h2>
-        <div style="display: flex; justify-content: space-around; flex-wrap: wrap;">
-            <div>• Erwin K. Opare-Essel - 22254064</div>
-            <div>• Emmanuel Oduro Dwamena - 11410636</div>
-            <div>• Elizabeth Afranewaa Abayateye - 22252474</div>
-            <div>• Elien Samira Osumanu - 11410414</div>
-            <div>• Innocent Arkaah- 11410788</div>
-            <div>• Sheena Pognaa Dasoberi - 22252392</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.title("About")
+    st.markdown("This app demonstrates sarcasm detection with ELMo embeddings + Logistic Regression & Random Forest.")
 
 with _tabs[1]:
     # Your original 'home/data' page
     page_upload()
 
 with _tabs[2]:
-    st.subheader("Data Preprocessing")
-    if st.button("▶ Start Preprocessing", key="btn_preprocess_start"):
-        page_preprocess()
-    else:
-        st.info("Click **Start Preprocessing** to begin.")
+    page_preprocess()
 
 with _tabs[3]:
-    st.subheader("Model Training")
-    if st.button("▶ Start Training", key="btn_train_start"):
-        page_train()
-    else:
-        st.info("Click **Start Training** to train models with the current preprocessing & hyperparameters.")
+    page_train()
 
 with _tabs[4]:
     page_evaluation()
@@ -622,4 +622,11 @@ with _tabs[5]:
     # Single & batch prediction UI (unique keys are already defined inside this function)
     page_prediction()
 
+with _tabs[6]:
+    st.title("Insights & Conclusions")
+    st.info("Summarize key findings and next steps here.")
+
+with _tabs[7]:
+    st.title("Batch Prediction")
+    st.write("Use the **Prediction Interface** tab to upload a CSV for batch scoring.")
 
