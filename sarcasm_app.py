@@ -400,7 +400,7 @@ def page_preprocess():
 
     
     # --- Wordle-like Word Cloud (UI-only) ---
-    st.subheader("Word Cloud (Wordle-like)")
+    st.subheader("Word Cloud")
     st.caption("A visual of frequent tokens after cleaning" + (" and stopword removal" if st.session_state.remove_stop else "") + ".")
     try:
         from wordcloud import WordCloud
