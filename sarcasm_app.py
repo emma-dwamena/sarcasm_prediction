@@ -676,6 +676,25 @@ with _tabs[0]:
 with _tabs[1]:
     page_upload()
 
+    # --- Word Cloud (after data upload) ---
+    df = st.session_state.get("df")
+    text_col = st.session_state.get("text_col")
+    if df is not None and text_col:
+        st.markdown("### Word Cloud")
+        with st.expander("Customize", expanded=False):
+            max_rows = int(len(df))
+            min_slider = 1
+            max_slider = max(1, max_rows)
+            default_slider = min(1000, max_rows) if max_rows > 0 else 1
+            step_slider = 1 if max_rows < 200 else 50
+            sample_n = st.slider("Sample rows (for speed)", min_slider, max_slider, default_slider, step_slider, key="wc_sample")
+            max_words = st.slider("Max words", 50, 400, 200, 25, key="wc_max_words")
+            bg = st.selectbox("Background", ["white", "black"], index=0, key="wc_bg")
+
+        _df_wc = df[text_col].dropna().astype(str)
+        if len(_df_wc) > sample_n:
+            _df_wc = _df_wc.sample(sample_n, random_state=st.session_state.get("random_state", 42))
+        st_wordcloud(_df_wc.tolist(), title="Most Frequent Terms", max_words=max_words, background=bg)
 with _tabs[2]:
     # Start button to run preprocessing
     if st.button("▶ Start Preprocessing", key="btn_preprocess"):
@@ -696,3 +715,51 @@ with _tabs[4]:
 with _tabs[5]:
     page_prediction()
 
+
+
+
+def st_wordcloud(texts, title="Word Cloud", max_words=200, background="white"):
+    """
+    Render a word cloud from an iterable of texts.
+    Falls back to a frequency bar chart if the 'wordcloud' package isn't available.
+    """
+    import numpy as _np
+    import matplotlib.pyplot as plt
+    from collections import Counter
+
+    # Concatenate and basic clean (reuse app's cleaning if available)
+    try:
+        _cleaned = [basic_clean(str(t), lower=True, remove_punct=True) for t in texts if t is not None]
+    except Exception:
+        _cleaned = [str(t).lower() for t in texts if t is not None]
+
+    tokens = [w for w in " ".join(_cleaned).split() if len(w) >= 3]
+
+    # Try real wordcloud first
+    try:
+        from wordcloud import WordCloud, STOPWORDS
+        stops = set(STOPWORDS) | {"http", "https", "amp", "rt"}
+        wc = WordCloud(width=900, height=420, background_color=background,
+                       max_words=int(max_words), stopwords=stops, collocations=False)
+        img = wc.generate(" ".join(tokens))
+        fig = plt.figure(figsize=(9, 4.8))
+        plt.imshow(img, interpolation="bilinear")
+        plt.axis("off")
+        plt.title(title)
+        st.pyplot(fig)
+    except Exception:
+        # Fallback: top-30 frequency bar chart
+        counts = Counter(tokens)
+        most = counts.most_common(30)
+        if not most:
+            st.info("Not enough text to render a word cloud yet.")
+            return
+        words, freqs = zip(*most)
+        fig = plt.figure(figsize=(9, 5))
+        y = _np.arange(len(words))
+        plt.barh(y, freqs)
+        plt.yticks(y, words)
+        plt.gca().invert_yaxis()
+        plt.title(title + " (fallback)")
+        plt.tight_layout()
+        st.pyplot(fig)
