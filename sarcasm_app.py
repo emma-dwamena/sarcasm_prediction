@@ -360,7 +360,13 @@ def page_preprocess():
     with c4: st.session_state.remove_stop = st.checkbox("remove stop words", value=st.session_state.remove_stop)
 
 
-    df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
+    
+    # Start button placed **after** cleaning options
+    if not st.button('▶ Start Preprocessing', key='btn_preprocess'):
+        st.info('Adjust the cleaning options above, then click **Start Preprocessing**.')
+        return
+
+df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
 
     
 
@@ -712,12 +718,7 @@ with _tabs[1]:
     page_upload()
 
 with _tabs[2]:
-    # Start button to run preprocessing
-    if st.button("▶ Start Preprocessing", key="btn_preprocess"):
-        page_preprocess()
-    elif st.session_state.get("prep_cache") is not None:
-        st.success("Preprocessing complete. Click the button to re-run if needed.")
-
+    page_preprocess()
 with _tabs[3]:
     page_train()
 with _tabs[4]:
