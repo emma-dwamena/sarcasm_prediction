@@ -366,7 +366,7 @@ def page_preprocess():
         st.info('Adjust the cleaning options above, then click **Start Preprocessing**.')
         return
 
-df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
+    df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
 
     
 
