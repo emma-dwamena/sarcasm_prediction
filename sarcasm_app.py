@@ -410,7 +410,7 @@ def page_preprocess():
     except Exception as _e:
         st.info("Install optional dependency: `pip install wordcloud`")
     # --- End Word Cloud ---
-st.subheader("Train/Test Split")
+    st.subheader("Train/Test Split")
     c1, c2 = st.columns(2)
     with c1: st.session_state.test_size = st.slider("Test size", 0.1, 0.4, float(st.session_state.test_size), 0.05)
     with c2: st.session_state.random_state = st.number_input("Random state", 0, 10000, int(st.session_state.random_state), step=1)
