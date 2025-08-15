@@ -7,44 +7,75 @@ import pandas as pd
 import streamlit as st
 
 
-# --- Helper: Word Cloud (with graceful fallback) ---
+
+# --- Helper: Word Cloud (Wordle-like colorful style, with fallback) ---
 def st_wordcloud(texts, title="Word Cloud", max_words=200, background="white"):
     """
     Render a word cloud from an iterable of texts.
-    Falls back to a frequency bar chart if the 'wordcloud' package isn't available.
+    Uses a bright multi-color palette (Wordle-like). Falls back to a top-terms bar chart
+    if the 'wordcloud' package is unavailable.
     """
     import numpy as _np
     import matplotlib.pyplot as plt
+    import random
     from collections import Counter
 
-    # Concatenate and basic cleaning (use app's basic_clean if available)
+    # Concatenate and basic clean (reuse app's cleaner if available)
     try:
         _cleaned = [basic_clean(str(t), lower=True, remove_punct=True) for t in texts if t is not None]
     except Exception:
         _cleaned = [str(t).lower() for t in texts if t is not None]
 
     tokens = [w for w in " ".join(_cleaned).split() if len(w) >= 3]
+    if not tokens:
+        st.info("Not enough text to render a word cloud yet.")
+        return
 
     try:
         from wordcloud import WordCloud, STOPWORDS
         stops = set(STOPWORDS) | {"http", "https", "amp", "rt"}
-        wc = WordCloud(width=900, height=420, background_color=background,
-                       max_words=int(max_words), stopwords=stops, collocations=False)
-        img = wc.generate(" ".join(tokens))
-        fig = plt.figure(figsize=(9, 4.8))
-        plt.imshow(img, interpolation="bilinear")
+
+        # Bright, varied palette (Tableau-like)
+        _palette = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd",
+                    "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"]
+
+        def _hex_to_rgb(h):
+            h = h.lstrip("#")
+            return tuple(int(h[i:i+2], 16) for i in (0,2,4))
+
+        def _color_func(*args, **kwargs):
+            r, g, b = _hex_to_rgb(random.choice(_palette))
+            return f"rgb({r}, {g}, {b})"
+
+        wc = WordCloud(
+            width=1000, height=500,
+            background_color=background,
+            max_words=int(max_words),
+            stopwords=stops,
+            collocations=False,
+            prefer_horizontal=0.95,
+            scale=3,
+            normalize_plurals=True,
+            random_state=42
+        ).generate(" ".join(tokens))
+
+        wc = wc.recolor(color_func=_color_func, random_state=3)
+
+        fig = plt.figure(figsize=(12, 6))
+        plt.imshow(wc, interpolation="bilinear")
         plt.axis("off")
         plt.title(title)
         st.pyplot(fig)
+
     except Exception:
-        # Fallback: top-30 frequency bar chart
+        # Fallback: simple top-30 frequency bar chart
         counts = Counter(tokens)
         most = counts.most_common(30)
-        if not most:
+        words, freqs = zip(*most) if most else ([], [])
+        if not words:
             st.info("Not enough text to render a word cloud yet.")
             return
-        words, freqs = zip(*most)
-        fig = plt.figure(figsize=(9, 5))
+        fig = plt.figure(figsize=(10, 6))
         y = _np.arange(len(words))
         plt.barh(y, freqs)
         plt.yticks(y, words)
@@ -350,12 +381,25 @@ def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), pre
 st.sidebar.markdown("---")
 st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
 st.sidebar.markdown("---")
+st.sidebar.markdown(
+    """
+    <div style='font-size:12px; line-height:1.3;'>
+    Erwin K. Opare-Essel - 22254064<br>
+    Emmanuel Oduro Dwamena - 11410636<br>
+    Elizabeth Afranewaa Abayateye - 22252474<br>
+    Elien Samira Osumanu - 11410414<br>
+    Innocent Arkaah- 11410788<br>
+    Sheena Pognaa Dasoberi - 22252392
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ==============================
 # Page 1 — Data Upload
 # ==============================
 def page_upload():
-    st.subheader("Data Upload")
+    st.title("Data Upload")
     f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
     if f is not None:
         name = f.name.lower()
@@ -391,6 +435,7 @@ def page_upload():
 # Page 2 — Data Preprocessing
 # ==============================
 def page_preprocess():
+    st.title("Data Preprocessing")
     if st.session_state.df is None:
         st.warning("Please upload a dataset in **Data Upload**."); return
     df = st.session_state.df.copy()
@@ -508,6 +553,7 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
 # Page 3 — Model Training
 # ==============================
 def page_train():
+    st.title("Model Training")
     required = ["X_train_emb", "X_test_emb", "y_train", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in required):
         st.warning("Please finish **Data Preprocessing** first."); return
@@ -523,25 +569,26 @@ def page_train():
         max_depth = st.number_input("RandomForest max_depth (0=None)", 0, 100, 0, step=1)
         max_depth = None if max_depth == 0 else int(max_depth)
 
-    # Only start training when the user clicks the button
-    if st.button("▶ Train Model", key="btn_train_go"):
-        colA, colB = st.columns(2)
-        with colA:
-            with st.spinner("Training Logistic Regression…"):
-                lr = LogisticRegression(C=C, solver="liblinear", random_state=st.session_state.random_state)
-                lr.fit(X_lr_train, y_lr_train)
-        with colB:
-            with st.spinner("Training Random Forest…"):
-                rf = RandomForestClassifier(n_estimators=int(n_estimators), max_depth=max_depth,
-                                            random_state=st.session_state.random_state, n_jobs=-1)
-                rf.fit(X_rf_train, y_rf_train)
+    colA, colB = st.columns(2)
+    with colA:
+        with st.spinner("Training Logistic Regression…"):
+            lr = LogisticRegression(C=C, solver="liblinear", random_state=st.session_state.random_state)
+            lr.fit(X_lr_train, y_lr_train)
+    with colB:
+        with st.spinner("Training Random Forest…"):
+            rf = RandomForestClassifier(n_estimators=int(n_estimators), max_depth=max_depth,
+                                        random_state=st.session_state.random_state, n_jobs=-1)
+            rf.fit(X_rf_train, y_rf_train)
 
-        st.session_state.models = {"lr": lr, "rf": rf}
-        st.success("Training complete. Proceed to **Model Evaluation**.")
-    else:
-        if st.session_state.get("models"):
-            st.success("Models already trained. Adjust hyperparameters and click **Train Model** to retrain.")
-        st.info("Adjust hyperparameters above, then click **Train Model**.")
+    st.session_state.models = {"lr": lr, "rf": rf}
+    st.success("Training complete. Proceed to **Model Evaluation**.")
+
+# ==============================
+# Page 4 — Model Evaluation
+# ==============================
+def _safe_auc(y_true, scores):
+    try: return roc_auc_score(y_true, scores)
+    except Exception: return float("nan")
 
 def page_evaluation():
     st.title("Model Evaluation")
@@ -693,68 +740,20 @@ _tab_labels = [
 _tabs = st.tabs(_tab_labels)
 
 with _tabs[0]:
-    st.markdown("""
-    <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
-        <h2 style="color: #030a0a; text-align: center;">📌 About This App</h2>
-        <p style="text-align:center;max-width:900px;margin:0 auto;">
-            This dashboard predicts sarcasm in comments.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
-        <h2 style="color: #030a0a; text-align: center;">👥Team Members</h2>
-        <div style="display: flex; justify-content: space-around; flex-wrap: wrap;">
-            <div>• Erwin K. Opare-Essel - 22254064</div>
-            <div>• Emmanuel Oduro Dwamena - 11410636</div>
-            <div>• Elizabeth Afranewaa Abayateye - 22252474</div>
-            <div>• Elien Samira Osumanu - 11410414</div>
-            <div>• Innocent Arkaah- 11410788</div>
-            <div>• Sheena Pognaa Dasoberi - 22252392</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("### About")
+    st.write("This interface provides data upload/overview, preprocessing, model training & evaluation, and a prediction interface.")
 
 with _tabs[1]:
     page_upload()
 
-    # --- Word Cloud (after data upload) ---
-    df = st.session_state.get("df")
-    text_col = st.session_state.get("text_col")
-    if df is not None and text_col:
-        st.markdown("### Word Cloud")
-        with st.expander("Customize", expanded=False):
-            max_rows = int(len(df))
-            min_slider = 1
-            max_slider = max(1, max_rows)
-            default_slider = min(1000, max_rows) if max_rows > 0 else 1
-            step_slider = 1 if max_rows < 200 else 50
-            sample_n = st.slider("Sample rows (for speed)", min_slider, max_slider, default_slider, step_slider, key="wc_sample")
-            max_words = st.slider("Max words", 50, 400, 200, 25, key="wc_max_words")
-            bg = st.selectbox("Background", ["white", "black"], index=0, key="wc_bg")
-
-        _df_wc = df[text_col].dropna().astype(str)
-        if len(_df_wc) > sample_n:
-            _df_wc = _df_wc.sample(sample_n, random_state=st.session_state.get("random_state", 42))
-        st_wordcloud(_df_wc.tolist(), title="Most Frequent Terms", max_words=max_words, background=bg)
 with _tabs[2]:
-    st.subheader("Data Preprocessing")
-    # Start button to run preprocessing
-    if st.button("▶ Start Preprocessing", key="btn_preprocess"):
-        page_preprocess()
-    elif st.session_state.get("prep_cache") is not None:
-        st.success("Preprocessing complete. Click the button to re-run if needed.")
+    page_preprocess()
 
 with _tabs[3]:
     page_train()
+
 with _tabs[4]:
-    st.subheader("Model Evaluation")
-    # Start button to evaluate models
-    if st.button("▶ Evaluate Model", key="btn_eval"):
-        page_evaluation()
-    elif st.session_state.get("models"):
-        st.info("Click **Evaluate Model** to compute metrics and plots.")
+    page_evaluation()
 
 with _tabs[5]:
     page_prediction()
