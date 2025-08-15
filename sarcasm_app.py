@@ -149,37 +149,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-
-# --- Fixed top page selector (UI-only; no ML changes) ---
-st.markdown(
-    """
-    <style>
-    /* Pin the first selectbox (our page nav) to the very top */
-    div[data-testid='stSelectbox']:first-of-type {
-        position: fixed; top: 0; left: 0; right: 0; width: 100%;
-        z-index: 10000;
-        background: var(--panel);
-        border-bottom: 1px solid var(--border);
-        box-shadow: 0 2px 6px rgba(0,0,0,.06);
-        padding: .35rem .6rem .5rem .6rem;
-        margin: 0 !important;
-    }
-    /* Ensure the label stays visible inline */
-    div[data-testid='stSelectbox']:first-of-type label p {
-        margin-bottom: 0 !important;
-        font-weight: 600;
-    }
-    /* Offset content so it doesn't hide under the fixed selector */
-    .block-container { padding-top: 4.8rem; }
-    /* Keep Streamlit header/menu above if present */
-    header[data-testid='stHeader'] { z-index: 10100; }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-# --- End fixed selector CSS ---
-
-
+st.sidebar.title("📰 Sarcasm Detector")
 
 # ==============================
 # Session-State Initialization
@@ -331,42 +301,15 @@ def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), pre
     st.pyplot(fig)
 
 # ==============================
-# Sidebar Navigation
-# ==============================
-st.sidebar.title("📰 Sarcasm Detector")
-page = st.selectbox(
-    "Navigate",
-    [
-        "Data Upload",
-        "Data Preprocessing",
-        "Model Training",
-        "Model Evaluation",
-        "Prediction",
-    ],
-    key="nav_combo",
-)
+
 st.sidebar.markdown("---")
 st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
 st.sidebar.markdown("---")
-st.sidebar.markdown(
-    """
-    <div style='font-size:12px; line-height:1.3;'>
-    Erwin K. Opare-Essel - 22254064<br>
-    Emmanuel Oduro Dwamena - 11410636<br>
-    Elizabeth Afranewaa Abayateye - 22252474<br>
-    Elien Samira Osumanu - 11410414<br>
-    Innocent Arkaah- 11410788<br>
-    Sheena Pognaa Dasoberi - 22252392
-    </div>
-    """,
-    unsafe_allow_html=True
-)
 
 # ==============================
 # Page 1 — Data Upload
 # ==============================
 def page_upload():
-    st.title("Data Upload")
     f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
     if f is not None:
         name = f.name.lower()
@@ -402,7 +345,6 @@ def page_upload():
 # Page 2 — Data Preprocessing
 # ==============================
 def page_preprocess():
-    st.title("Data Preprocessing")
     if st.session_state.df is None:
         st.warning("Please upload a dataset in **Data Upload**."); return
     df = st.session_state.df.copy()
@@ -411,23 +353,29 @@ def page_preprocess():
         st.warning("Select text and label columns in **Data Upload**."); return
 
     st.subheader("Text Cleaning")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     with c1: st.session_state.clean_lower = st.checkbox("lowercase", value=st.session_state.clean_lower)
     with c2: st.session_state.clean_punct = st.checkbox("remove punctuation", value=st.session_state.clean_punct)
     with c3: st.session_state.dedupe = st.checkbox("drop duplicate texts", value=st.session_state.dedupe)
+    with c4: st.session_state.remove_stop = st.checkbox("remove stop words", value=st.session_state.remove_stop)
+
 
     df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
+
+    
 
 
     # Optional stopword removal (UI-only; affects text going into embeddings)
 
-    if st.session_state.remove_stop:
+
+    if st.session_state.get('remove_stop', False):
+
 
         _stops = set(ENGLISH_STOP_WORDS)
 
-        df["__text__"] = df["__text__"].apply(lambda s: " ".join([w for w in s.split() if w not in _stops]))
 
-    raw_lbl = df[label_col]
+        df['__text__'] = df['__text__'].apply(lambda s: ' '.join([w for w in s.split() if w not in _stops]))
+raw_lbl = df[label_col]
     if raw_lbl.dtype == bool:
         df["__label__"] = raw_lbl.astype(int)
     else:
@@ -444,7 +392,25 @@ def page_preprocess():
         n0 = int(vc.get(0,0)); n1 = int(vc.get(1,0)); N = max(1, n0+n1)
         st.write(pd.DataFrame({"class":["Not Sarcastic (0)","Sarcastic (1)"], "count":[n0,n1], "percent":[round(100*n0/N,2), round(100*n1/N,2)]}))
 
-    st.subheader("Train/Test Split")
+    
+    # --- Wordle-like Word Cloud (UI-only) ---
+    st.subheader("Word Cloud (Wordle-like)")
+    st.caption("A visual of frequent tokens after cleaning" + (" and stopword removal" if st.session_state.remove_stop else "") + ".")
+    try:
+        from wordcloud import WordCloud
+        import matplotlib.pyplot as plt
+        all_text = " ".join(df["__text__"].astype(str).tolist())
+        if len(all_text.strip()) > 0:
+            wc = WordCloud(width=1000, height=400, background_color="white").generate(all_text)
+            fig_wc = plt.figure(figsize=(10, 4))
+            plt.imshow(wc, interpolation="bilinear"); plt.axis("off"); plt.tight_layout()
+            st.pyplot(fig_wc)
+        else:
+            st.info("No text available for word cloud yet.")
+    except Exception as _e:
+        st.info("Install optional dependency: `pip install wordcloud`")
+    # --- End Word Cloud ---
+st.subheader("Train/Test Split")
     c1, c2 = st.columns(2)
     with c1: st.session_state.test_size = st.slider("Test size", 0.1, 0.4, float(st.session_state.test_size), 0.05)
     with c2: st.session_state.random_state = st.number_input("Random state", 0, 10000, int(st.session_state.random_state), step=1)
@@ -529,7 +495,6 @@ pip install tensorflow==2.15.0 tensorflow-hub==0.12.0
 # Page 3 — Model Training
 # ==============================
 def page_train():
-    st.title("Model Training")
     required = ["X_train_emb", "X_test_emb", "y_train", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in required):
         st.warning("Please finish **Data Preprocessing** first."); return
@@ -545,19 +510,24 @@ def page_train():
         max_depth = st.number_input("RandomForest max_depth (0=None)", 0, 100, 0, step=1)
         max_depth = None if max_depth == 0 else int(max_depth)
 
-    colA, colB = st.columns(2)
-    with colA:
-        with st.spinner("Training Logistic Regression…"):
-            lr = LogisticRegression(C=C, solver="liblinear", random_state=st.session_state.random_state)
-            lr.fit(X_lr_train, y_lr_train)
-    with colB:
-        with st.spinner("Training Random Forest…"):
-            rf = RandomForestClassifier(n_estimators=int(n_estimators), max_depth=max_depth,
-                                        random_state=st.session_state.random_state, n_jobs=-1)
-            rf.fit(X_rf_train, y_rf_train)
-
-    st.session_state.models = {"lr": lr, "rf": rf}
-    st.success("Training complete. Proceed to **Model Evaluation**.")
+    # Only run training when the user clicks the button
+    if st.button("▶ Train Model", key="btn_train_go"):
+        colA, colB = st.columns(2)
+        with colA:
+            with st.spinner("Training Logistic Regression…"):
+                lr = LogisticRegression(C=C, solver="liblinear", random_state=st.session_state.random_state)
+                lr.fit(X_lr_train, y_lr_train)
+        with colB:
+            with st.spinner("Training Random Forest…"):
+                rf = RandomForestClassifier(n_estimators=int(n_estimators), max_depth=max_depth,
+                                            random_state=st.session_state.random_state, n_jobs=-1)
+                rf.fit(X_rf_train, y_rf_train)
+        st.session_state.models = {"lr": lr, "rf": rf}
+        st.success("Training complete. Proceed to **Model Evaluation**.")
+    else:
+        if st.session_state.get("models"):
+            st.success("Models already trained. Adjust hyperparameters and click **Train Model** to retrain.")
+        st.info("Adjust hyperparameters above, then click **Train Model**.")
 
 # ==============================
 # Page 4 — Model Evaluation
@@ -567,7 +537,6 @@ def _safe_auc(y_true, scores):
     except Exception: return float("nan")
 
 def page_evaluation():
-    st.title("Model Evaluation")
     req = ["models", "X_test_emb", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
         st.warning("Train models in **Model Training** first."); return
@@ -678,8 +647,87 @@ def page_prediction():
 # Router
 # ==============================
 st.sidebar.markdown("---")
-if page == "Data Upload":   page_upload()
-elif page == "Data Preprocessing": page_preprocess()
-elif page == "Model Training": page_train()
-elif page == "Model Evaluation": page_evaluation()
-elif page == "Prediction": page_prediction()
+
+# --- Safety fallback: ensure `page` exists even if top combo didn't render ---
+try:
+    page
+except NameError:
+    page = st.session_state.get('nav_combo_top') or st.session_state.get('nav_combo_sidebar') or 'Data Upload'
+
+
+
+# === Sticky Top Tabs Navigation (like the screenshot) ===
+st.markdown(
+    """
+    <style>
+    div[data-testid="stTabs"] > div[role="tablist"] {
+        position: sticky;
+        top: 0;
+        z-index: 10100;
+        background: var(--background-color);
+        border-bottom: 1px solid rgba(49,51,63,0.2);
+    }
+    .block-container { padding-top: 1rem !important; }
+    </style>
+    """
+    ,
+    unsafe_allow_html=True,
+)
+
+_tab_labels = [
+    "About",
+    "Home & Data Overview",
+    "Data Preprocessing",
+    "Model Training",
+    "Model Evaluation",
+    "Prediction Interface",
+]
+_tabs = st.tabs(_tab_labels)
+
+with _tabs[0]:
+    st.markdown("""
+    <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
+        <h2 style="color: #030a0a; text-align: center;">📌 About This App</h2>
+        <p style="text-align:center;max-width:900px;margin:0 auto;">
+            This dashboard predicts sarcasm in comments.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
+        <h2 style="color: #030a0a; text-align: center;">👥Team Members</h2>
+        <div style="display: flex; justify-content: space-around; flex-wrap: wrap;">
+            <div>• Erwin K. Opare-Essel - 22254064</div>
+            <div>• Emmanuel Oduro Dwamena - 11410636</div>
+            <div>• Elizabeth Afranewaa Abayateye - 22252474</div>
+            <div>• Elien Samira Osumanu - 11410414</div>
+            <div>• Innocent Arkaah- 11410788</div>
+            <div>• Sheena Pognaa Dasoberi - 22252392</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with _tabs[1]:
+    page_upload()
+
+with _tabs[2]:
+    # Start button to run preprocessing
+    if st.button("▶ Start Preprocessing", key="btn_preprocess"):
+        page_preprocess()
+    elif st.session_state.get("prep_cache") is not None:
+        st.success("Preprocessing complete. Click the button to re-run if needed.")
+
+with _tabs[3]:
+    page_train()
+with _tabs[4]:
+    st.subheader("Model Evaluation")
+    # Start button to evaluate models
+    if st.button("▶ Evaluate Model", key="btn_eval"):
+        page_evaluation()
+    elif st.session_state.get("models"):
+        st.info("Click **Evaluate Model** to compute metrics and plots.")
+
+with _tabs[5]:
+    page_prediction()
+
