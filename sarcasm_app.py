@@ -280,6 +280,31 @@ def st_plot_dist(y_before, y_after, title):
     for i, v in enumerate([c0a, c1a]): plt.text(x[i] + width/2, v, str(v), ha='center', va='bottom')
     plt.xticks(x, labels); plt.ylabel("Count"); plt.title(title); plt.legend(loc="best"); plt.tight_layout()
     st.pyplot(fig)
+
+
+
+
+
+
+
+
+def st_wordcloud(texts, title="Word Cloud", max_words=200, background="white"):
+    """
+    Render a word cloud from an iterable of texts.
+    Falls back to a frequency bar chart if 'wordcloud' is unavailable.
+    """
+    import numpy as _np
+    import matplotlib.pyplot as plt
+    from collections import Counter
+
+    # Concatenate and basic clean
+    try:
+        _cleaned = [basic_clean(str(t), lower=True, remove_punct=True) for t in texts if t is not None]
+    except Exception:
+        _cleaned = [str(t).lower() for t in texts if t is not None]
+
+    corpus = " ".join(_cleaned)
+
 def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), preds=("Pred 0","Pred 1")):
     import matplotlib.pyplot as plt
     fig = plt.figure(figsize=(4.8, 4.2))
@@ -684,7 +709,12 @@ with _tabs[1]:
         with st.expander("Customize", expanded=False):
             max_words = st.slider("Max words", 50, 400, 200, 25, key="wc_max_words")
             bg = st.selectbox("Background", ["white", "black"], index=0, key="wc_bg")
-            sample_n = st.slider("Sample rows (for speed)", 200, min(5000, len(df)), min(len(df), 1000), 200, key="wc_sample")
+            max_rows = int(len(df))
+min_slider = 1
+max_slider = max(1, max_rows)
+default_slider = min(1000, max_rows) if max_rows > 0 else 1
+step_slider = 1 if max_rows < 200 else 50
+sample_n = st.slider("Sample rows (for speed)", min_slider, max_slider, default_slider, step_slider, key="wc_sample")), min(len(df), 1000), 200, key="wc_sample")
         _df_wc = df[text_col].dropna().astype(str)
         if len(_df_wc) > sample_n:
             _df_wc = _df_wc.sample(sample_n, random_state=st.session_state.get("random_state", 42))
@@ -707,29 +737,7 @@ with _tabs[4]:
         st.info("Click **Evaluate Model** to compute metrics and plots.")
 
 with _tabs[5]:
-    page_prediction()
-
-
-
-
-
-def st_wordcloud(texts, title="Word Cloud", max_words=200, background="white"):
-    """
-    Render a word cloud from an iterable of texts.
-    Falls back to a frequency bar chart if 'wordcloud' is unavailable.
-    """
-    import numpy as _np
-    import matplotlib.pyplot as plt
-    from collections import Counter
-
-    # Concatenate and basic clean
-    try:
-        _cleaned = [basic_clean(str(t), lower=True, remove_punct=True) for t in texts if t is not None]
-    except Exception:
-        _cleaned = [str(t).lower() for t in texts if t is not None]
-
-    corpus = " ".join(_cleaned)
-    tokens = [w for w in corpus.split() if len(w) >= 3]
+    page_prediction()    tokens = [w for w in corpus.split() if len(w) >= 3]
 
     try:
         from wordcloud import WordCloud, STOPWORDS
