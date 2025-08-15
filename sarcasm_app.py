@@ -375,7 +375,7 @@ def page_preprocess():
 
 
         df['__text__'] = df['__text__'].apply(lambda s: ' '.join([w for w in s.split() if w not in _stops]))
-raw_lbl = df[label_col]
+    raw_lbl = df[label_col]
     if raw_lbl.dtype == bool:
         df["__label__"] = raw_lbl.astype(int)
     else:
