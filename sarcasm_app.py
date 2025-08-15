@@ -6,6 +6,53 @@ import hashlib
 import pandas as pd
 import streamlit as st
 
+
+# --- Helper: Word Cloud (with graceful fallback) ---
+def st_wordcloud(texts, title="Word Cloud", max_words=200, background="white"):
+    """
+    Render a word cloud from an iterable of texts.
+    Falls back to a frequency bar chart if the 'wordcloud' package isn't available.
+    """
+    import numpy as _np
+    import matplotlib.pyplot as plt
+    from collections import Counter
+
+    # Concatenate and basic cleaning (use app's basic_clean if available)
+    try:
+        _cleaned = [basic_clean(str(t), lower=True, remove_punct=True) for t in texts if t is not None]
+    except Exception:
+        _cleaned = [str(t).lower() for t in texts if t is not None]
+
+    tokens = [w for w in " ".join(_cleaned).split() if len(w) >= 3]
+
+    try:
+        from wordcloud import WordCloud, STOPWORDS
+        stops = set(STOPWORDS) | {"http", "https", "amp", "rt"}
+        wc = WordCloud(width=900, height=420, background_color=background,
+                       max_words=int(max_words), stopwords=stops, collocations=False)
+        img = wc.generate(" ".join(tokens))
+        fig = plt.figure(figsize=(9, 4.8))
+        plt.imshow(img, interpolation="bilinear")
+        plt.axis("off")
+        plt.title(title)
+        st.pyplot(fig)
+    except Exception:
+        # Fallback: top-30 frequency bar chart
+        counts = Counter(tokens)
+        most = counts.most_common(30)
+        if not most:
+            st.info("Not enough text to render a word cloud yet.")
+            return
+        words, freqs = zip(*most)
+        fig = plt.figure(figsize=(9, 5))
+        y = _np.arange(len(words))
+        plt.barh(y, freqs)
+        plt.yticks(y, words)
+        plt.gca().invert_yaxis()
+        plt.title(title + " (fallback)")
+        plt.tight_layout()
+        st.pyplot(fig)
+
 # --- UI helper (session only): stable hash of a list of texts ---
 def _hash_texts(texts):
     import hashlib as _hl
@@ -308,6 +355,7 @@ st.sidebar.markdown("---")
 # Page 1 — Data Upload
 # ==============================
 def page_upload():
+    st.subheader("Data Upload")
     f = st.file_uploader("Upload dataset", type=["csv", "json", "txt", "jsonl"])
     if f is not None:
         name = f.name.lower()
@@ -475,7 +523,7 @@ def page_train():
         max_depth = st.number_input("RandomForest max_depth (0=None)", 0, 100, 0, step=1)
         max_depth = None if max_depth == 0 else int(max_depth)
 
-    # Only run training when the user clicks the button
+    # Only start training when the user clicks the button
     if st.button("▶ Train Model", key="btn_train_go"):
         colA, colB = st.columns(2)
         with colA:
@@ -487,6 +535,7 @@ def page_train():
                 rf = RandomForestClassifier(n_estimators=int(n_estimators), max_depth=max_depth,
                                             random_state=st.session_state.random_state, n_jobs=-1)
                 rf.fit(X_rf_train, y_rf_train)
+
         st.session_state.models = {"lr": lr, "rf": rf}
         st.success("Training complete. Proceed to **Model Evaluation**.")
     else:
@@ -494,14 +543,8 @@ def page_train():
             st.success("Models already trained. Adjust hyperparameters and click **Train Model** to retrain.")
         st.info("Adjust hyperparameters above, then click **Train Model**.")
 
-# ==============================
-# Page 4 — Model Evaluation
-# ==============================
-def _safe_auc(y_true, scores):
-    try: return roc_auc_score(y_true, scores)
-    except Exception: return float("nan")
-
 def page_evaluation():
+    st.title("Model Evaluation")
     req = ["models", "X_test_emb", "y_test", "scaler", "prep_cache"]
     if not all(k in st.session_state and st.session_state[k] is not None for k in req):
         st.warning("Train models in **Model Training** first."); return
@@ -696,6 +739,7 @@ with _tabs[1]:
             _df_wc = _df_wc.sample(sample_n, random_state=st.session_state.get("random_state", 42))
         st_wordcloud(_df_wc.tolist(), title="Most Frequent Terms", max_words=max_words, background=bg)
 with _tabs[2]:
+    st.subheader("Data Preprocessing")
     # Start button to run preprocessing
     if st.button("▶ Start Preprocessing", key="btn_preprocess"):
         page_preprocess()
@@ -715,51 +759,3 @@ with _tabs[4]:
 with _tabs[5]:
     page_prediction()
 
-
-
-
-def st_wordcloud(texts, title="Word Cloud", max_words=200, background="white"):
-    """
-    Render a word cloud from an iterable of texts.
-    Falls back to a frequency bar chart if the 'wordcloud' package isn't available.
-    """
-    import numpy as _np
-    import matplotlib.pyplot as plt
-    from collections import Counter
-
-    # Concatenate and basic clean (reuse app's cleaning if available)
-    try:
-        _cleaned = [basic_clean(str(t), lower=True, remove_punct=True) for t in texts if t is not None]
-    except Exception:
-        _cleaned = [str(t).lower() for t in texts if t is not None]
-
-    tokens = [w for w in " ".join(_cleaned).split() if len(w) >= 3]
-
-    # Try real wordcloud first
-    try:
-        from wordcloud import WordCloud, STOPWORDS
-        stops = set(STOPWORDS) | {"http", "https", "amp", "rt"}
-        wc = WordCloud(width=900, height=420, background_color=background,
-                       max_words=int(max_words), stopwords=stops, collocations=False)
-        img = wc.generate(" ".join(tokens))
-        fig = plt.figure(figsize=(9, 4.8))
-        plt.imshow(img, interpolation="bilinear")
-        plt.axis("off")
-        plt.title(title)
-        st.pyplot(fig)
-    except Exception:
-        # Fallback: top-30 frequency bar chart
-        counts = Counter(tokens)
-        most = counts.most_common(30)
-        if not most:
-            st.info("Not enough text to render a word cloud yet.")
-            return
-        words, freqs = zip(*most)
-        fig = plt.figure(figsize=(9, 5))
-        y = _np.arange(len(words))
-        plt.barh(y, freqs)
-        plt.yticks(y, words)
-        plt.gca().invert_yaxis()
-        plt.title(title + " (fallback)")
-        plt.tight_layout()
-        st.pyplot(fig)
