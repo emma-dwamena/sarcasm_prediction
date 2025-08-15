@@ -6,78 +6,6 @@ import hashlib
 import pandas as pd
 import streamlit as st
 
-
-
-# --- Helper: Word Cloud (Wordle-like colorful style, with fallback) ---
-def st_wordcloud(texts, title="Word Cloud", max_words=200, background="white"):
-    """
-    Render a word cloud from an iterable of texts.
-    Uses a bright multi-color palette (Wordle-like). Falls back to a top-terms bar chart
-    if the 'wordcloud' package is unavailable.
-    """
-    import numpy as _np
-    import matplotlib.pyplot as plt
-    import random
-    from collections import Counter
-
-    # Concatenate & basic clean (reuse app cleaner if available)
-    try:
-        _cleaned = [basic_clean(str(t), lower=True, remove_punct=True) for t in texts if t is not None]
-    except Exception:
-        _cleaned = [str(t).lower() for t in texts if t is not None]
-
-    tokens = [w for w in " ".join(_cleaned).split() if len(w) >= 3]
-    if not tokens:
-        st.info("Upload data and choose a text column to render a word cloud.")
-        return
-
-    try:
-        from wordcloud import WordCloud, STOPWORDS
-        stops = set(STOPWORDS) | {"http", "https", "amp", "rt"}
-
-        # Vivid palette (10 colors)
-        _palette = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd",
-                    "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"]
-
-        def _hex_to_rgb(h):
-            h = h.lstrip("#")
-            return tuple(int(h[i:i+2], 16) for i in (0,2,4))
-
-        def _color_func(*args, **kwargs):
-            r, g, b = _hex_to_rgb(random.choice(_palette))
-            return f"rgb({r}, {g}, {b})"
-
-        wc = WordCloud(
-            width=1000, height=500, background_color=background,
-            max_words=int(max_words), stopwords=stops, collocations=False,
-            prefer_horizontal=0.95, scale=3, normalize_plurals=True,
-            random_state=42
-        ).generate(" ".join(tokens))
-        wc = wc.recolor(color_func=_color_func, random_state=3)
-
-        fig = plt.figure(figsize=(12, 6))
-        plt.imshow(wc, interpolation="bilinear")
-        plt.axis("off")
-        plt.title(title)
-        st.pyplot(fig)
-
-    except Exception:
-        # Fallback: top-30 terms bar chart
-        counts = Counter(tokens)
-        most = counts.most_common(30)
-        if not most:
-            st.info("Not enough text to render a word cloud yet.")
-            return
-        words, freqs = zip(*most)
-        fig = plt.figure(figsize=(10, 6))
-        y = _np.arange(len(words))
-        plt.barh(y, freqs)
-        plt.yticks(y, words)
-        plt.gca().invert_yaxis()
-        plt.title(title + " (fallback)")
-        plt.tight_layout()
-        st.pyplot(fig)
-
 # --- UI helper (session only): stable hash of a list of texts ---
 def _hash_texts(texts):
     import hashlib as _hl
@@ -118,6 +46,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, roc_curve, confusion_matrix
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 # ------------------------------
 # ELMo via TensorFlow Hub (TF1)
@@ -220,7 +149,37 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.sidebar.title("📰 Sarcasm Detector")
+
+# --- Fixed top page selector (UI-only; no ML changes) ---
+st.markdown(
+    """
+    <style>
+    /* Pin the first selectbox (our page nav) to the very top */
+    div[data-testid='stSelectbox']:first-of-type {
+        position: fixed; top: 0; left: 0; right: 0; width: 100%;
+        z-index: 10000;
+        background: var(--panel);
+        border-bottom: 1px solid var(--border);
+        box-shadow: 0 2px 6px rgba(0,0,0,.06);
+        padding: .35rem .6rem .5rem .6rem;
+        margin: 0 !important;
+    }
+    /* Ensure the label stays visible inline */
+    div[data-testid='stSelectbox']:first-of-type label p {
+        margin-bottom: 0 !important;
+        font-weight: 600;
+    }
+    /* Offset content so it doesn't hide under the fixed selector */
+    .block-container { padding-top: 4.8rem; }
+    /* Keep Streamlit header/menu above if present */
+    header[data-testid='stHeader'] { z-index: 10100; }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+# --- End fixed selector CSS ---
+
+
 
 # ==============================
 # Session-State Initialization
@@ -233,6 +192,7 @@ def _init_state():
     ss.setdefault("clean_lower", True)
     ss.setdefault("clean_punct", True)
     ss.setdefault("dedupe", True)
+    ss.setdefault("remove_stop", True)
     ss.setdefault("test_size", 0.2)
     ss.setdefault("random_state", 42)
     ss.setdefault("down_maj_mult", 1.0)
@@ -371,10 +331,36 @@ def st_plot_cm(cm, title="Confusion Matrix", labels=("Actual 0","Actual 1"), pre
     st.pyplot(fig)
 
 # ==============================
-
+# Sidebar Navigation
+# ==============================
+st.sidebar.title("📰 Sarcasm Detector")
+page = st.selectbox(
+    "Navigate",
+    [
+        "Data Upload",
+        "Data Preprocessing",
+        "Model Training",
+        "Model Evaluation",
+        "Prediction",
+    ],
+    key="nav_combo",
+)
 st.sidebar.markdown("---")
 st.sidebar.caption("Upload → Preprocess → Train → Evaluate → Predict")
 st.sidebar.markdown("---")
+st.sidebar.markdown(
+    """
+    <div style='font-size:12px; line-height:1.3;'>
+    Erwin K. Opare-Essel - 22254064<br>
+    Emmanuel Oduro Dwamena - 11410636<br>
+    Elizabeth Afranewaa Abayateye - 22252474<br>
+    Elien Samira Osumanu - 11410414<br>
+    Innocent Arkaah- 11410788<br>
+    Sheena Pognaa Dasoberi - 22252392
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ==============================
 # Page 1 — Data Upload
@@ -425,14 +411,19 @@ def page_preprocess():
         st.warning("Select text and label columns in **Data Upload**."); return
 
     st.subheader("Text Cleaning")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     with c1: st.session_state.clean_lower = st.checkbox("lowercase", value=st.session_state.clean_lower)
     with c2: st.session_state.clean_punct = st.checkbox("remove punctuation", value=st.session_state.clean_punct)
     with c3: st.session_state.dedupe = st.checkbox("drop duplicate texts", value=st.session_state.dedupe)
 
-    df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
-
-    raw_lbl = df[label_col]
+    
+    with c4: st.session_state.remove_stop = st.checkbox("remove stop words", value=st.session_state.remove_stop)
+df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
+    # Optional stopword removal (UI-only; affects text going into embeddings)
+    if st.session_state.remove_stop:
+        _stops = set(ENGLISH_STOP_WORDS)
+        df["__text__"] = df["__text__"].apply(lambda s: " ".join([w for w in s.split() if w not in _stops]))
+raw_lbl = df[label_col]
     if raw_lbl.dtype == bool:
         df["__label__"] = raw_lbl.astype(int)
     else:
@@ -449,7 +440,25 @@ def page_preprocess():
         n0 = int(vc.get(0,0)); n1 = int(vc.get(1,0)); N = max(1, n0+n1)
         st.write(pd.DataFrame({"class":["Not Sarcastic (0)","Sarcastic (1)"], "count":[n0,n1], "percent":[round(100*n0/N,2), round(100*n1/N,2)]}))
 
-    st.subheader("Train/Test Split")
+    
+    # --- Wordle-like Word Cloud (UI-only) ---
+    st.subheader("Word Cloud (Wordle-like)")
+    st.caption("A quick visual of frequent tokens after cleaning" + (" and stopword removal" if st.session_state.remove_stop else "") + ".")
+    try:
+        from wordcloud import WordCloud
+        import matplotlib.pyplot as plt
+        all_text = " ".join(df["__text__"].astype(str).tolist())
+        if len(all_text.strip()) > 0:
+            wc = WordCloud(width=1000, height=400, background_color="white").generate(all_text)
+            fig_wc = plt.figure(figsize=(10, 4))
+            plt.imshow(wc, interpolation="bilinear"); plt.axis("off"); plt.tight_layout()
+            st.pyplot(fig_wc)
+        else:
+            st.info("No text available for word cloud yet.")
+    except Exception as _e:
+        st.info("Install the optional package to enable the word cloud: `pip install wordcloud`")
+    # --- End Word Cloud ---
+st.subheader("Train/Test Split")
     c1, c2 = st.columns(2)
     with c1: st.session_state.test_size = st.slider("Test size", 0.1, 0.4, float(st.session_state.test_size), 0.05)
     with c2: st.session_state.random_state = st.number_input("Random state", 0, 10000, int(st.session_state.random_state), step=1)
@@ -683,94 +692,8 @@ def page_prediction():
 # Router
 # ==============================
 st.sidebar.markdown("---")
-
-# --- Safety fallback: ensure `page` exists even if top combo didn't render ---
-try:
-    page
-except NameError:
-    page = st.session_state.get('nav_combo_top') or st.session_state.get('nav_combo_sidebar') or 'Data Upload'
-
-
-
-# === Sticky Top Tabs Navigation (like the screenshot) ===
-st.markdown(
-    """
-    <style>
-    div[data-testid="stTabs"] > div[role="tablist"] {
-        position: sticky;
-        top: 0;
-        z-index: 10100;
-        background: var(--background-color);
-        border-bottom: 1px solid rgba(49,51,63,0.2);
-    }
-    .block-container { padding-top: 1rem !important; }
-    </style>
-    """
-    ,
-    unsafe_allow_html=True,
-)
-
-_tab_labels = [
-    "About",
-    "Home & Data Overview",
-    "Data Preprocessing",
-    "Model Training",
-    "Model Evaluation",
-    "Prediction Interface",
-]
-_tabs = st.tabs(_tab_labels)
-
-with _tabs[0]:
-    st.markdown("""
-    <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
-        <h2 style="color: #030a0a; text-align: center;">📌 About This App</h2>
-        <p style="text-align:center;max-width:900px;margin:0 auto;">
-            This dashboard predicts sarcasm in comments.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div style="background-color: #f2f7f7; padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
-        <h2 style="color: #030a0a; text-align: center;">👥Team Members</h2>
-        <div style="display: flex; justify-content: space-around; flex-wrap: wrap;">
-            <div>• Erwin K. Opare-Essel - 22254064</div>
-            <div>• Emmanuel Oduro Dwamena - 11410636</div>
-            <div>• Elizabeth Afranewaa Abayateye - 22252474</div>
-            <div>• Elien Samira Osumanu - 11410414</div>
-            <div>• Innocent Arkaah- 11410788</div>
-            <div>• Sheena Pognaa Dasoberi - 22252392</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with _tabs[1]:
-    page_upload()
-
-with _tabs[2]:
-    st.subheader("Data Preprocessing")
-    # Start button to run preprocessing
-    if st.button("▶ Start Preprocessing", key="btn_preprocess"):
-        page_preprocess()
-    elif st.session_state.get("prep_cache") is not None:
-        st.success("Preprocessing complete. Click the button to re-run if needed.")
-
-with _tabs[3]:
-    st.subheader("Model Training")
-    # Start button to train models
-    if st.button("▶ Train Model", key="btn_train"):
-        page_train()
-    elif st.session_state.get("models"):
-        st.success("Models already trained. Click the button to retrain.")
-
-with _tabs[4]:
-    st.subheader("Model Evaluation")
-    # Start button to evaluate models
-    if st.button("▶ Evaluate Model", key="btn_eval"):
-        page_evaluation()
-    elif st.session_state.get("models"):
-        st.info("Click **Evaluate Model** to compute metrics and plots.")
-
-with _tabs[5]:
-    page_prediction()
-
+if page == "Data Upload":   page_upload()
+elif page == "Data Preprocessing": page_preprocess()
+elif page == "Model Training": page_train()
+elif page == "Model Evaluation": page_evaluation()
+elif page == "Prediction": page_prediction()
