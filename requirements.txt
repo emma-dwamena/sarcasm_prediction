@@ -5,4 +5,5 @@ pandas
 numpy
 scikit-learn
 matplotlib
+wordcloud
 protobuf==3.20.3  # Resolves compatibility issues
