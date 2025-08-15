@@ -411,19 +411,23 @@ def page_preprocess():
         st.warning("Select text and label columns in **Data Upload**."); return
 
     st.subheader("Text Cleaning")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
     with c1: st.session_state.clean_lower = st.checkbox("lowercase", value=st.session_state.clean_lower)
     with c2: st.session_state.clean_punct = st.checkbox("remove punctuation", value=st.session_state.clean_punct)
     with c3: st.session_state.dedupe = st.checkbox("drop duplicate texts", value=st.session_state.dedupe)
 
-    
-    with c4: st.session_state.remove_stop = st.checkbox("remove stop words", value=st.session_state.remove_stop)
-df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
+    df["__text__"] = df[text_col].astype(str).apply(lambda t: basic_clean(t, st.session_state.clean_lower, st.session_state.clean_punct))
+
+
     # Optional stopword removal (UI-only; affects text going into embeddings)
+
     if st.session_state.remove_stop:
+
         _stops = set(ENGLISH_STOP_WORDS)
+
         df["__text__"] = df["__text__"].apply(lambda s: " ".join([w for w in s.split() if w not in _stops]))
-raw_lbl = df[label_col]
+
+    raw_lbl = df[label_col]
     if raw_lbl.dtype == bool:
         df["__label__"] = raw_lbl.astype(int)
     else:
@@ -440,25 +444,7 @@ raw_lbl = df[label_col]
         n0 = int(vc.get(0,0)); n1 = int(vc.get(1,0)); N = max(1, n0+n1)
         st.write(pd.DataFrame({"class":["Not Sarcastic (0)","Sarcastic (1)"], "count":[n0,n1], "percent":[round(100*n0/N,2), round(100*n1/N,2)]}))
 
-    
-    # --- Wordle-like Word Cloud (UI-only) ---
-    st.subheader("Word Cloud (Wordle-like)")
-    st.caption("A quick visual of frequent tokens after cleaning" + (" and stopword removal" if st.session_state.remove_stop else "") + ".")
-    try:
-        from wordcloud import WordCloud
-        import matplotlib.pyplot as plt
-        all_text = " ".join(df["__text__"].astype(str).tolist())
-        if len(all_text.strip()) > 0:
-            wc = WordCloud(width=1000, height=400, background_color="white").generate(all_text)
-            fig_wc = plt.figure(figsize=(10, 4))
-            plt.imshow(wc, interpolation="bilinear"); plt.axis("off"); plt.tight_layout()
-            st.pyplot(fig_wc)
-        else:
-            st.info("No text available for word cloud yet.")
-    except Exception as _e:
-        st.info("Install the optional package to enable the word cloud: `pip install wordcloud`")
-    # --- End Word Cloud ---
-st.subheader("Train/Test Split")
+    st.subheader("Train/Test Split")
     c1, c2 = st.columns(2)
     with c1: st.session_state.test_size = st.slider("Test size", 0.1, 0.4, float(st.session_state.test_size), 0.05)
     with c2: st.session_state.random_state = st.number_input("Random state", 0, 10000, int(st.session_state.random_state), step=1)
