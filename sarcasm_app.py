@@ -3,8 +3,45 @@ from datetime import datetime
 
 import numpy as np
 import hashlib
+
+#import page
 import pandas as pd
 import streamlit as st
+
+
+
+# ==============================
+# Login Helpers (UI-only; no ML changes)
+# ==============================
+def _sha256(s: str) -> str:
+    import hashlib as _hl
+    return _hl.sha256(s.encode("utf-8")).hexdigest()
+
+def _get_credentials():
+    import os as _os
+    user = _os.getenv("SARCASM_USER", "admin")
+    # default password = "admin123" (sha256)
+    default_hash = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"
+    pw_hash = _os.getenv("SARCASM_PASS_HASH", default_hash)
+    return user, pw_hash
+
+def render_login():
+    st.session_state.setdefault("is_authed", False)
+    st.title("🔐 Sign in")
+    st.caption("Enter your credentials to access the Sarcasm Detector dashboard.")
+    with st.form("login_form"):
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign in")
+        if submitted:
+            valid_user, valid_hash = _get_credentials()
+            if u.strip() == valid_user and _sha256(p) == valid_hash:
+                st.session_state.is_authed = True
+                st.success("Signed in. Loading app…")
+                st.experimental_rerun() if hasattr(st, "experimental_rerun") else st.rerun()
+            else:
+                st.error("Invalid username or password.")
+    st.info("Tip: set env vars **SARCASM_USER** and **SARCASM_PASS_HASH** (sha256) to override defaults.")
 
 # --- UI helper (session only): stable hash of a list of texts ---
 def _hash_texts(texts):
@@ -150,6 +187,7 @@ st.markdown(
 )
 
 st.sidebar.title("📰 Sarcasm Detector")
+st.sidebar.button("Logout", on_click=lambda: st.session_state.update({"is_authed": False}))
 
 # ==============================
 # Session-State Initialization
@@ -680,6 +718,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+# --- Auth Gate: show login unless authenticated ---
+if not st.session_state.get("is_authed", False):
+    render_login()
+    st.stop()
 _tab_labels = [
     "About",
     "Home & Data Overview",
