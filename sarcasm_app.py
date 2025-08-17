@@ -313,7 +313,7 @@ def st_plot_dist(y_before, y_after, title):
     c0a, c1a = _counts(y_after)
     labels = ["Class 0 (Not Sarcastic)", "Class 1 (Sarcastic)"]
     x = np.arange(len(labels)); width = 0.35
-    fig = plt.figure(figsize=(7, 5))
+    fig = plt.figure(figsize=(5, 3))
     plt.bar(x - width/2, [c0b, c1b], width, label="Before")
     plt.bar(x + width/2, [c0a, c1a], width, label="After")
     for i, v in enumerate([c0b, c1b]): plt.text(x[i] - width/2, v, str(v), ha='center', va='bottom')
