@@ -41,7 +41,7 @@ def render_login():
                 st.experimental_rerun() if hasattr(st, "experimental_rerun") else st.rerun()
             else:
                 st.error("Invalid username or password.")
-    st.info("Tip: set env vars **SARCASM_USER** and **SARCASM_PASS_HASH** (sha256) to override defaults.")
+    #st.info("Tip: set env vars **SARCASM_USER** and **SARCASM_PASS_HASH** (sha256) to override defaults.")
 
 # --- UI helper (session only): stable hash of a list of texts ---
 def _hash_texts(texts):
